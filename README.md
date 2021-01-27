@@ -32,7 +32,7 @@ positional arguments:
 
 Example:
 ```
->> python3 script/demo_model.py "model/bert_large-augmented-batch_size=128-lr=2e-5-max_gloss=6"
+>> python3 script/demo_model.py "model/bert_base-augmented-batch_size=64-lr=2e-5-max_gloss=4"
 Loading model...
 
 Enter a sentence with an ambiguous word surrounded by [TGT] tokens
