@@ -1,6 +1,9 @@
 import argparse
 import re
 
+from torchvision import models
+from torchsummary import summary
+
 import torch
 from tabulate import tabulate
 from torch.nn.functional import softmax
@@ -28,7 +31,7 @@ def get_predictions(model, tokenizer, sentence):
         sense_keys.append(sense_key)
         definitions.append(definition)
 
-    record = GlossSelectionRecord("test", sentence, sense_keys, definitions, [-1])
+    record = GlossSelectionRecord("test", sentence, sense_keys, definitions, [-1]) # target is -1 so it isn't in targets for _create_features_from_records()
     features = _create_features_from_records([record], MAX_SEQ_LENGTH, tokenizer,
                                              cls_token=tokenizer.cls_token,
                                              sep_token=tokenizer.sep_token,
@@ -36,10 +39,10 @@ def get_predictions(model, tokenizer, sentence):
                                              pad_token_segment_id=0,
                                              disable_progress_bar=True)[0]
 
-    with torch.no_grad():
-        logits = torch.zeros(len(definitions), dtype=torch.double).to(DEVICE)
+    with torch.no_grad(): # no_grad() disables gradient calculation. Used during inference.
+        logits = torch.zeros(len(definitions), dtype=torch.double).to(DEVICE) # a numnber of zeroes equal to the number of senses.
         for i, bert_input in tqdm(list(enumerate(features)), desc="Progress"):
-            logits[i] = model.ranking_linear(
+            logits[i] = model.ranking_linear( # inputs the sentence into BERT and calculates logits used for calculating scores
                 model.bert(
                     input_ids=torch.tensor(bert_input.input_ids, dtype=torch.long).unsqueeze(0).to(DEVICE),
                     attention_mask=torch.tensor(bert_input.input_mask, dtype=torch.long).unsqueeze(0).to(DEVICE),
@@ -48,7 +51,7 @@ def get_predictions(model, tokenizer, sentence):
             )
         scores = softmax(logits, dim=0)
 
-    return sorted(zip(sense_keys, definitions, scores), key=lambda x: x[-1], reverse=True)
+    return sorted(zip(sense_keys, definitions, scores), key=lambda x: x[-1], reverse=True) # zip adds each the lists together into rows [[a1,b1], [a2, b2]]
 
 
 def main():
@@ -66,6 +69,8 @@ def main():
     # Load fine-tuned model and vocabulary
     print("Loading model...")
     model = BertWSD.from_pretrained(args.model_dir)
+    #print(model)
+    #summary(model, input_size=(2, 768))
     tokenizer = BertTokenizer.from_pretrained(args.model_dir)
     model.to(DEVICE)
     model.eval()
@@ -84,4 +89,5 @@ def main():
 
 
 if __name__ == '__main__':
+
     main()

@@ -331,9 +331,9 @@ def main():
         "--weight_decay",
         default=0.0,
         type=float,
-        help="Weight deay if we apply some."
+        help="Weight decay if we apply some."
     )
-    parser.add_argument(
+    parser.add_argument( # Epsilon is a very small parameter used to avoid division by 0
         "--adam_epsilon",
         default=1e-8,
         type=float,
@@ -446,7 +446,7 @@ def main():
     )
     args = parser.parse_args()
 
-    if (
+    if ( # Makes sure not to overwrite stuff in output dir unless you want to.
             os.path.exists(args.output_dir)
             and os.listdir(args.output_dir)
             and args.do_train
@@ -457,7 +457,7 @@ def main():
                 args.output_dir
             )
         )
-    elif not os.path.exists(args.output_dir) and args.local_rank in [-1, 0]:
+    elif not os.path.exists(args.output_dir) and args.local_rank in [-1, 0]: # Make output dir if it doesn't exist
         os.makedirs(args.output_dir)
 
     # Setup distant debugging if needed
@@ -482,6 +482,7 @@ def main():
 
     # Setup logging
     logging.basicConfig(
+        # asctime is simply human readable time stamps.
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN,
@@ -508,6 +509,7 @@ def main():
         batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
 
         def _get_dataloader(_train_dataset, _collate_fn):
+            # \ by itself joins two lines together using the logic of the first line
             train_sampler = RandomSampler(_train_dataset) if args.local_rank == -1 \
                 else DistributedSampler(_train_dataset)
 

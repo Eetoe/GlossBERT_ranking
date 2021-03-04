@@ -102,6 +102,7 @@ def _create_records_from_csv(csv_path, deserialize_fn):
         return [deserialize_fn(row) for row in reader]
 
 
+# Creates features, i.e., the input given to BERT, to train on.
 def _create_features_from_records(records, max_seq_length, tokenizer, cls_token_at_end=False, pad_on_left=False,
                                   cls_token='[CLS]', sep_token='[SEP]', pad_token=0,
                                   sequence_a_segment_id=0, sequence_b_segment_id=1,
@@ -119,11 +120,11 @@ def _create_features_from_records(records, max_seq_length, tokenizer, cls_token_
     features = []
     for record in tqdm(records, disable=disable_progress_bar):
         tokens_a = tokenizer.tokenize(record.sentence)
-
+        # in tqdm: get the gloss from the record and a 1 if i is in the record targets or 0 if i is not in the record targets.
         sequences = [(gloss, 1 if i in record.targets else 0) for i, gloss in enumerate(record.glosses)]
 
         pairs = []
-        for seq, label in sequences:
+        for seq, label in sequences: #seq is the gloss, label is either 0 or 1
             tokens_b = tokenizer.tokenize(seq)
 
             # Modifies `tokens_a` and `tokens_b` in place so that the total
@@ -180,6 +181,7 @@ def _create_features_from_records(records, max_seq_length, tokenizer, cls_token_
             assert len(input_mask) == max_seq_length
             assert len(segment_ids) == max_seq_length
 
+            # These are the input embedding IDs, the input mask, segment IDs and labels. What exactly is label?
             pairs.append(
                 BertInput(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids, label_id=label)
             )

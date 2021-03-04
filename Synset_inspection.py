@@ -14,6 +14,16 @@ def word_info(word):
               if len(lst) == 0:
                      print("- No synonyms found")
               del lst
+              print("Antonyms:")
+              lems = syn_i.lemmas()
+              for lemma in lems:
+                     antos = lemma.antonyms()
+                     print("-",lemma.name())
+                     if len(antos) > 0:
+                            [print("  -",anto.name()) for anto in antos]
+                     else:
+                            print("  - No antonyms found")
+              del lems, antos
               if syn_i.hypernyms() != []:
                      print ("Hypernymic synset:  ", syn_i.hypernyms()[0].name())
                      print("Synset(s) in hypernymic synset:")
@@ -30,6 +40,7 @@ def word_info(word):
               print("=====================================")
               print("\n\n")
 
-word_info("research")
+if __name__ == "__main__":
+       word_info("research")
 
 
