@@ -73,7 +73,7 @@ def train(args, model, tokenizer, train_dataloader, eval_during_training=False):
 
     optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
     scheduler = get_linear_schedule_with_warmup(
-        optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=t_total
+        optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=t_total # t_total is the training length calculated above.
     )
 
     # Check if saved optimizer or scheduler states exist
@@ -163,7 +163,7 @@ def train(args, model, tokenizer, train_dataloader, eval_during_training=False):
             else:
                 loss.backward()
 
-            tr_loss += loss.item()
+            tr_loss += loss.item() # .item() is to get a number out of the tensor instead of the tensor itself.
             if (step + 1) % args.gradient_accumulation_steps == 0:
                 if args.fp16:
                     torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), args.max_grad_norm)
@@ -172,7 +172,7 @@ def train(args, model, tokenizer, train_dataloader, eval_during_training=False):
 
                 optimizer.step()
                 scheduler.step()  # Update learning rate schedule
-                model.zero_grad()
+                model.zero_grad() # removes accumulated gradients to update correctly at current step.
                 global_step += 1
 
                 if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
@@ -181,7 +181,7 @@ def train(args, model, tokenizer, train_dataloader, eval_during_training=False):
                         # Only evaluate when single GPU otherwise metrics may not average well
                         logs["eval_loss"] = evaluate(args, model, tokenizer, global_step)
 
-                    loss_scalar = (tr_loss - logging_loss) / args.logging_steps
+                    loss_scalar = (tr_loss - logging_loss) / args.logging_steps # average loss of steps since last logging
                     learning_rate_scalar = scheduler.get_lr()[0]
                     logs["learning_rate"] = learning_rate_scalar
                     logs["loss"] = loss_scalar
@@ -248,6 +248,8 @@ def evaluate(args, model, tokenizer, suffix=None):
             loss, logits_list = forward_gloss_selection(args, model, batches)
 
         eval_loss += loss
+        # argmax with dimension returns the position of the highest value for the dimension for each unit in that dimension, e.g., rows or columns.
+        # dim = 0 is columns, 1 is rows, -1 might be the whole array.
         predictions.extend([torch.argmax(logits, dim=-1).item() for logits in logits_list])
         nb_eval_steps += 1
 
@@ -471,6 +473,7 @@ def main():
 
     # Setup CUDA, GPU & distributed training
     if args.local_rank == -1 or args.no_cuda:
+        # Use cuda if available and no_cuda is False, else use cpu
         device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
         args.n_gpu = torch.cuda.device_count()
     else:  # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
@@ -485,7 +488,7 @@ def main():
         # asctime is simply human readable time stamps.
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN,
+        level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN, # WARN is a deprecated version of warning
     )
     logger.warning(
         "Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s",

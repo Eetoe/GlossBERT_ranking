@@ -116,8 +116,8 @@ def main():
                     for token in sent:
                         tokens.append(token.text)
                         if token.tag == 'instance':
-                            start_idx = len(tokens) - 1
-                            end_idx = start_idx + 1
+                            start_idx = len(tokens) - 1 # the number of tokens before target/ the position of token before the target
+                            end_idx = start_idx + 1 # the position of the target
                             instances.append((
                                 token.attrib['id'],
                                 start_idx,
@@ -128,7 +128,7 @@ def main():
 
                     # construct records for gloss selection task
                     for id_, start, end, lemma, pos in instances:
-                        gold = g.readline().strip().split()
+                        gold = g.readline().strip().split() # Note: g is the gold keys .txt file. Gold is formatted as id; key
                         gold_keys = gold[1:]
                         assert id_ == gold[0]
 

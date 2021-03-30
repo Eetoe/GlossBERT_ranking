@@ -13,6 +13,7 @@ BERT_MODELS = (
 )
 
 
+
 class BertWSD(BertPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
@@ -81,9 +82,9 @@ def forward_gloss_selection(args, model, batches):
     loss_fn = torch.nn.CrossEntropyLoss()
     for batch in batches:
         logits = model.ranking_linear(_forward(args, model, batch)).squeeze(-1)
-        labels = torch.max(batch[3].to(args.device), -1).indices.to(args.device).detach()
+        labels = torch.max(batch[3].to(args.device), -1).indices.to(args.device).detach() # reminder: batch[3] is the label.
 
-        batch_loss += loss_fn(logits.unsqueeze(dim=0), labels.unsqueeze(dim=-1))
+        batch_loss += loss_fn(logits.unsqueeze(dim=0), labels.unsqueeze(dim=-1)) # loss(predicted, target)
         logits_list.append(logits)
 
     loss = batch_loss / len(batches)

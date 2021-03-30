@@ -103,6 +103,18 @@ python script/prepare_dataset.py \
     --use_augmentation
 ```
 
+Example with syntax augmentation:
+```
+python3 script/prepare_dataset_syntax.py \
+    --corpus_dir "data/corpus/SemCor" \
+    --output_dir "data/train" \
+    --use_augmentation \
+    --use_pos \
+    --use_dependencies \
+    --cross_pos_train
+```
+
+
 ### Development/Test dataset
 Usage:
 ```
@@ -211,11 +223,11 @@ arguments:
 ```
 Example:
 ```
-python script/run_model.py \
+python3 script/run_model.py \
     --do_eval \
     --eval_path "data/dev/semeval2007.csv" \
-    --model_name_or_path "model/bert_large-augmented-batch_size=128-lr=2e-5-max_gloss=6" \
-    --output_dir "model/bert_large-augmented-batch_size=128-lr=2e-5-max_gloss=6"
+    --model_name_or_path "model/bert_base-augmented-batch_size=64-lr=2e-5-max_gloss=4" \
+    --output_dir "model/bert_base-augmented-batch_size=64-lr=2e-5-max_gloss=4"
 ```
 
 ### Scoring
@@ -230,7 +242,7 @@ arguments:
 Example:
 ```
 java Scorer data/corpus/semeval2007/semeval2007.gold.key.txt \
-    model/bert_large-augmented-batch_size=128-lr=2e-5-max_gloss=6/semeval2007_predictions.txt
+    model/bert_base-augmented-batch_size=64-lr=2e-5-max_gloss=4/semeval2007_predictions.txt
 ```
 
 

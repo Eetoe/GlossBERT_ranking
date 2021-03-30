@@ -38,6 +38,15 @@ def get_predictions(model, tokenizer, sentence):
                                              cls_token_segment_id=1,
                                              pad_token_segment_id=0,
                                              disable_progress_bar=True)[0]
+    # a feature per gloss-sentence pair
+    #for feature in features:
+    #    print("token ids")
+    #    print(feature[0])
+    #    print("attention mask")
+    #    print(feature[1])
+    #    print("segment ids")
+    #    print(feature[2])
+    #    print("===============================================\n")
 
     with torch.no_grad(): # no_grad() disables gradient calculation. Used during inference.
         logits = torch.zeros(len(definitions), dtype=torch.double).to(DEVICE) # a numnber of zeroes equal to the number of senses.
@@ -71,16 +80,17 @@ def main():
     model = BertWSD.from_pretrained(args.model_dir)
     #print(model)
     #summary(model, input_size=(2, 768))
+    #print(model.tok)
     tokenizer = BertTokenizer.from_pretrained(args.model_dir)
     model.to(DEVICE)
     model.eval()
 
     while True:
-        sentence = input("\nEnter a sentence with an ambiguous word surrounded by [TGT] tokens\n> ")
+        sentence = input("\nEnter a sentence with an ambiguous word surrounded by [TGT] tokens.\n> ")
         predictions = get_predictions(model, tokenizer, sentence)
         if predictions:
             print("\nPredictions:")
-            print(tabulate(
+            print(tabulate( # tabulate is for printing in a pretty format.
                 [[f"{i+1}.", key, gloss, f"{score:.5f}"] for i, (key, gloss, score) in enumerate(predictions)],
                 headers=["No.", "Sense key", "Definition", "Score"])
             )

@@ -22,20 +22,25 @@ def load_dataset(csv_path, tokenizer, max_sequence_length):
 
 
 def collate_batch(batch):
-    max_seq_length = len(batch[0][0].input_ids)
-
+    max_seq_length = len(batch[0][0].input_ids) # length of the input ids, which is the dimensionality of the BERT model.
+    """
+    Batch: contains instances
+    Instance: contains context-gloss pairs, that all share the same input sentence but have different candidate glosses.
+    context-gloss pair: sentence and sense definition in the format: [CLS] sentence [SEP] gloss [SEP] [PAD]...
+    """
     collated = []
     for sub_batch in batch:
         batch_size = len(sub_batch)
         # 4 set of tensors (input_ids, input_mask, segment_ids, label_id)
         sub_collated = [torch.zeros([batch_size, max_seq_length], dtype=torch.long) for _ in range(3)] + \
-                       [torch.zeros([batch_size], dtype=torch.long)]
+                       [torch.zeros([batch_size], dtype=torch.long)] # dtype is the data format, long is 64-bit integer and signed.
 
         for i, bert_input in enumerate(sub_batch):
             sub_collated[0][i] = torch.tensor(bert_input.input_ids, dtype=torch.long)
             sub_collated[1][i] = torch.tensor(bert_input.input_mask, dtype=torch.long)
             sub_collated[2][i] = torch.tensor(bert_input.segment_ids, dtype=torch.long)
             sub_collated[3][i] = torch.tensor(bert_input.label_id, dtype=torch.long)
+
 
         collated.append(sub_collated)
 
@@ -81,7 +86,7 @@ def _load_and_cache_dataset(csv_path, tokenizer, max_sequence_length, deserialze
         print("Saving features into cached file %s", cached_features_file)
         torch.save(features, cached_features_file)
 
-    class FeatureDataset(torch.utils.data.Dataset):
+    class FeatureDataset(torch.utils.data.Dataset): # Map style dataset
         def __init__(self, features_):
             self.features = features_
 
@@ -93,7 +98,7 @@ def _load_and_cache_dataset(csv_path, tokenizer, max_sequence_length, deserialze
 
     return FeatureDataset(features)
 
-
+# Read in dataset and deserialize each row into a named tuple.
 def _create_records_from_csv(csv_path, deserialize_fn):
     with open(csv_path, 'r', encoding='utf-8', newline='') as f:
         reader = csv.reader(f)
@@ -120,7 +125,8 @@ def _create_features_from_records(records, max_seq_length, tokenizer, cls_token_
     features = []
     for record in tqdm(records, disable=disable_progress_bar):
         tokens_a = tokenizer.tokenize(record.sentence)
-        # in tqdm: get the gloss from the record and a 1 if i is in the record targets or 0 if i is not in the record targets.
+        # in tqdm: get the gloss from the record and a 1 if i is in the record targets
+        # or 0 if i is not in the record targets.
         sequences = [(gloss, 1 if i in record.targets else 0) for i, gloss in enumerate(record.glosses)]
 
         pairs = []
@@ -173,7 +179,7 @@ def _create_features_from_records(records, max_seq_length, tokenizer, cls_token_
                 input_mask = ([0 if mask_padding_with_zero else 1] * padding_length) + input_mask
                 segment_ids = ([pad_token_segment_id] * padding_length) + segment_ids
             else:
-                input_ids = input_ids + ([pad_token] * padding_length)
+                input_ids = input_ids + ([pad_token] * padding_length) # [pad_token] defined as 0, the [PAD] token's id
                 input_mask = input_mask + ([0 if mask_padding_with_zero else 1] * padding_length)
                 segment_ids = segment_ids + ([pad_token_segment_id] * padding_length)
 
