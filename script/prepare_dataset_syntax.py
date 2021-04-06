@@ -57,12 +57,6 @@ def main():
         help="Whether to augment training dataset with example sentences from WordNet"
     )
 
-    #parser.add_argument(
-    #    "--spacy_model",
-    #    default="en_core_web_sm",
-    #    help="Which spacy model to use. The base model is en_core_web_sm; the transformer model is en_core_web_trf."
-    #)
-
     parser.add_argument(
         "--use_pos",
         action='store_true',
@@ -94,6 +88,8 @@ def main():
         output_filename += "-augmented"
     if args.use_pos:
         output_filename += "-POS"
+    if args.cross_pos_train:
+        output_filename += "-cross_pos"
     if args.use_dependencies:
         output_filename += "-DEP"
     csv_path = str(Path(args.output_dir).joinpath(f"{output_filename}.csv"))

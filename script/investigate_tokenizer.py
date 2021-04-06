@@ -18,9 +18,9 @@ if __name__ == '__main__':
     spacy_model = spacy.load("en_core_web_trf")
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
-    tm = spacy_model.tokenizer.vocab.morphology.tag_map
+    #tm = spacy_model.tokenizer.vocab.morphology.tag_map
 
-    print(tm)
+    #print(tm)
 
     labels = spacy_model.pipe_labels
     dep_vocab = ["[" + dep + "]" for dep in labels['parser']]
@@ -68,7 +68,6 @@ if __name__ == '__main__':
     print("============================================")
 
     # Make [TGT]'s token entries (as in text, POS, dependencies, tokenized form)
-    # Make it togglable
     spacy_tgt_list = [('[TGT]', '[NONE]', "[NONE]", ['[TGT]'])]
 
     # Add the [TGT] tokens again now that spacy has analyzed the sentence
@@ -113,9 +112,9 @@ if __name__ == '__main__':
     bert_tokens = [word for sublist in spacy_tokens_complete for word in sublist[3]]
     print(bert_tokens)
     bert_pos_tokens = [[ele[1]]*len(ele[3]) for ele in spacy_tokens_complete]
-    bert_pos_tokens = ["["+pos+"]" if pos != "[NONE]" else pos for sublist in bert_pos_tokens for pos in sublist]
+    bert_pos_tokens = [pos if re.search(r"^\[.+\]$", pos) else "["+pos+"]" for sublist in bert_pos_tokens for pos in sublist]
     print(bert_pos_tokens)
     bert_dep_tokens = [[ele[2]]*len(ele[3]) for ele in spacy_tokens_complete]
-    bert_dep_tokens = ["[" + dep + "]" if dep != "[NONE]" else dep for sublist in bert_dep_tokens for dep in sublist]
+    bert_dep_tokens = [dep if re.search(r"^\[.+\]$", dep) else "["+dep+"]" for sublist in bert_dep_tokens for dep in sublist]
     print(bert_dep_tokens)
     assert (len(bert_tokens) == len(bert_pos_tokens) == len(bert_dep_tokens))

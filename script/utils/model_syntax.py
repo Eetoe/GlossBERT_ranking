@@ -84,7 +84,7 @@ class BertWSD(BertPreTrainedModel):
     #    self.init_weights()
 
 
-def get_model_and_tokenizer(args):
+def get_model_and_tokenizer(args, tokens_to_add):
     if args.local_rank not in [-1, 0]:
         # Make sure only the first process in distributed training will download model & vocab
         torch.distributed.barrier()
@@ -107,16 +107,11 @@ def get_model_and_tokenizer(args):
     )
 
     # add new special token
-    for special_token in ['[TGT]', '[NOUN]', '[VERB]', '[ADJ]', '[ADV]']:
+    for special_token in tokens_to_add:
         if special_token not in tokenizer.additional_special_tokens:
-            tokenizer.add_special_tokens({'additional_special_tokens': ['[TGT]']})
-            assert '[TGT]' in tokenizer.additional_special_tokens
+            tokenizer.add_special_tokens({'additional_special_tokens': [special_token]})
+            assert special_token in tokenizer.additional_special_tokens
             model.resize_token_embeddings(len(tokenizer))
-
-    #if '[TGT]' not in tokenizer.additional_special_tokens:
-    #    tokenizer.add_special_tokens({'additional_special_tokens': ['[TGT]']})
-    #    assert '[TGT]' in tokenizer.additional_special_tokens
-    #    model.resize_token_embeddings(len(tokenizer))
 
     if args.local_rank == 0:
         # Make sure only the first process in distributed training will download model & vocab

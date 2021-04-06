@@ -64,6 +64,13 @@ def _get_gloss_extension(key, _lemma, conversion_dict, args):
     #print(out_tuple)
     return out_tuple
 
+def outer_fun(args):
+    _inner_fun(args)
+
+def _inner_fun(args):
+    print(args.use_pos)
+    print(args.use_dependencies)
+
 # For playing around with functions.
 if __name__ == '__main__':
     conv_dict = {
@@ -89,6 +96,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    outer_fun(args)
     #print(wn.get_version())
 
     _lemma = "quick"
