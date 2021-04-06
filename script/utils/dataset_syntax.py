@@ -141,6 +141,11 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
     features = []
     for record in tqdm(records, disable=disable_progress_bar):
         # ====== Create tokens for BERT from the sentence ======
+        """
+            - First take care of the case where syntax info is used
+            - Second take care of the case where it isn't
+        
+        """
         if args.use_pos or args.use_dependencies:
             """
             Spacy is analyzing the sentence without the [TGT] tokens. To do this, the following is needed:
@@ -239,6 +244,14 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
 
 
         # ====== Create tokens for BERT from the gloss ======
+        """
+            - First create the case where gloss extension is used. This requires POS by default.
+                - both pos and dep are found, only relevant information is passed on.
+            - Create the case where gloss extension isn't used.
+                - Using syntax info. Both pos and dep found, only relevant passed on.
+                - Without syntax, i.e. the original script.
+        
+        """
         # in tqdm: get the gloss from the record and a 1 if i is in the record targets or 0 if i is not in the record targets.
         # It only makes sense to use the gloss extension when POS is used, as dep is not guaranteed for any sense
         if args.use_gloss_extension:
@@ -250,6 +263,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
         # Make empty list for context-gloss pairs
         pairs = []
 
+        # ====== Using gloss extension ======
         if args.use_gloss_extension:
             # Since gloss extension is only used alongside pos, the spacy analysis is always done here.
             for seq, label, gloss_extension in sequences:  # seq is the gloss, label is either 0 or 1
@@ -276,35 +290,30 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
 
                 # Modifies `tokens_a` and `tokens_b` in place so that the total
                 # length is less than the specified length.
-                # Account for [CLS], [SEP], gloss extension, [SEP] "- 4"
-                _truncate_seq_pair(tokens_a, tokens_b, max_seq_length - 4)
-                _truncate_seq_pair(bert_pos_tokens_a, bert_pos_tokens_b, max_seq_length - 4)
-                _truncate_seq_pair(bert_dep_tokens_a, bert_dep_tokens_b, max_seq_length - 4)
+                # Account for [CLS], [SEP], gloss extension, [SEP]
 
+                target_word_tokens = tokenizer.tokenize(target_word)
+                number_of_target_tokens = len(target_word_tokens)
+                target_pos = [gloss_extension[1]]*number_of_target_tokens
+                target_dep = ["[NONE_DEP]"]*number_of_target_tokens
 
-                # The convention in BERT is:
-                # (a) For sequence pairs:
-                #  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
-                #  type_ids:   0   0  0    0    0     0       0   0   1  1  1  1   1   1
-                #
-                # Where "type_ids" are used to indicate whether this is the first
-                # sequence or the second sequence. The embedding vectors for `type=0` and
-                # `type=1` were learned during pre-training and are added to the wordpiece
-                # embedding vector (and position vector). This is not *strictly* necessary
-                # since the [SEP] token unambiguously separates the sequences, but it makes
-                # it easier for the model to learn the concept of sequences.
-                #
-                # For classification tasks, the first vector (corresponding to [CLS]) is
-                # used as as the "sentence vector". Note that this only makes sense because
-                # the entire model is fine-tuned.
-                tokens = tokens_a + [sep_token]
+                # Max sequence length with spots reserved for [CLS], [SEP] and target word tokens
+                msl_with_gloss_extension = max_seq_length - 3 - number_of_target_tokens
+
+                # Truncate based on msl_with_gloss_extension
+                _truncate_seq_pair(tokens_a, tokens_b, msl_with_gloss_extension)
+                _truncate_seq_pair(bert_pos_tokens_a, bert_pos_tokens_b, msl_with_gloss_extension)
+                _truncate_seq_pair(bert_dep_tokens_a, bert_dep_tokens_b, msl_with_gloss_extension)
+
+                # Now the tokens of the context and gloss halves are merged together.
+                tokens = tokens_a + [sep_token] + target_word_tokens
                 segment_ids = [sequence_a_segment_id] * len(tokens)
                 if args.zero_syntax_for_special_tokens:
-                    pos_tokens = bert_pos_tokens_a + ["[NONE]"]
-                    dep_tokens = bert_dep_tokens_a + ["[NONE]"]
+                    pos_tokens = bert_pos_tokens_a + ["[NONE]"] + target_pos
+                    dep_tokens = bert_dep_tokens_a + ["[NONE]"] + target_dep
                 else:
-                    pos_tokens = bert_pos_tokens_a + ["[SEP_POS]"]
-                    dep_tokens = bert_dep_tokens_a + ["[SEP_DEP]"]
+                    pos_tokens = bert_pos_tokens_a + ["[SEP_POS]"] + target_pos
+                    dep_tokens = bert_dep_tokens_a + ["[SEP_DEP]"] + target_dep
 
                 tokens += tokens_b + [sep_token]
                 # +1 to account for [SEP] token
@@ -381,94 +390,192 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
 
             features.append(pairs)
 
+        # ====== Without gloss extension ======
         else:
-            b = "b"
-            #if pos or dep
-                # get both pos
-            #else
+            # ====== When using syntax info =======
+            if args.use_pos or args.use_dependencies:
+                for seq, label in sequences:  # seq is the gloss, label is either 0 or 1
+                    # ====== Analyze sentence using spacy ======
+                    spacy_doc = spacy_model(seq)
+                    spacy_tokens_complete = [(token.text, token.pos_, token.dep_, tokenizer.tokenize(token.text))
+                                             for token in spacy_doc]
 
+                    # ====== Create the tokens to feed to BERT ======
+                    tokens_b = [word for sublist in spacy_tokens_complete for word in sublist[3]]
 
-        for seq, label, word_and_pos in sequences:  # seq is the gloss, label is either 0 or 1
-            tokens_b = tokenizer.tokenize(seq)
-            pos_tokens_b = [gloss_pos_token]*len(tokens_b)
+                    if args.use_pos:
+                        bert_pos_tokens_b = [[ele[1]] * len(ele[3]) for ele in spacy_tokens_complete]
+                        bert_pos_tokens_b = [pos if re.search(r"^\[.+\]$", pos) else "[" + pos + "]"
+                                             for sublist in bert_pos_tokens_b for pos in sublist]
+                        assert (len(tokens_b) == len(bert_pos_tokens_b))
+                    if args.use_dependencies:
+                        bert_dep_tokens_b = [[ele[2]] * len(ele[3]) for ele in spacy_tokens_complete]
+                        bert_dep_tokens_b = [dep if re.search(r"^\[.+\]$", dep) else "[" + dep + "]"
+                                             for sublist in bert_dep_tokens_b for dep in sublist]
+                        assert (len(tokens_b) == len(bert_dep_tokens_b))
 
-            # From the tuple word and pos, extract target word and tokenize.
-            tokens_b_target_word = tokenizer.tokenize(word_and_pos[0])
-            # From the tuple word and pos, extract pos and add 1 for each token in target word.
-            tokens_b_gloss_pos = word_and_pos[1]*len(tokens_b_target_word)
+                    # Modifies `tokens_a` and `tokens_b` in place so that the total
+                    # length is less than the specified length.
+                    # Account for [CLS], [SEP], gloss extension, [SEP]
+                    _truncate_seq_pair(tokens_a, tokens_b, max_seq_length-3)
+                    _truncate_seq_pair(bert_pos_tokens_a, bert_pos_tokens_b, max_seq_length-3)
+                    _truncate_seq_pair(bert_dep_tokens_a, bert_dep_tokens_b, max_seq_length-3)
 
-            # Add the target word and its pos to tokens_b
-            tokens_b = tokens_b_target_word + tokens_b
-            pos_tokens_b = tokens_b_gloss_pos + pos_tokens_b
+                    # Now the tokens of the context and gloss halves are merged together.
+                    tokens = tokens_a + [sep_token]
+                    segment_ids = [sequence_a_segment_id] * len(tokens)
+                    if args.zero_syntax_for_special_tokens:
+                        pos_tokens = bert_pos_tokens_a + ["[NONE]"]
+                        dep_tokens = bert_dep_tokens_a + ["[NONE]"]
+                    else:
+                        pos_tokens = bert_pos_tokens_a + ["[SEP_POS]"]
+                        dep_tokens = bert_dep_tokens_a + ["[SEP_DEP]"]
 
-            # Modifies `tokens_a` and `tokens_b` in place so that the total
-            # length is less than the specified length.
-            # Account for [CLS], [SEP], [SEP] "- 3"
-            _truncate_seq_pair(tokens_a, tokens_b, max_seq_length - 3)
+                    tokens += tokens_b + [sep_token]
+                    # +1 to account for [SEP] token
+                    segment_ids += [sequence_b_segment_id] * (len(tokens_b) + 1)
+                    if args.zero_syntax_for_special_tokens:
+                        pos_tokens += bert_pos_tokens_b + ["[NONE]"]
+                        dep_tokens += bert_dep_tokens_b + ["[NONE]"]
+                    else:
+                        pos_tokens += bert_pos_tokens_b + ["[SEP_POS]"]
+                        dep_tokens += bert_dep_tokens_b + ["[SEP_DEP]"]
 
-            # The convention in BERT is:
-            # (a) For sequence pairs:
-            #  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
-            #  type_ids:   0   0  0    0    0     0       0   0   1  1  1  1   1   1
-            #
-            # Where "type_ids" are used to indicate whether this is the first
-            # sequence or the second sequence. The embedding vectors for `type=0` and
-            # `type=1` were learned during pre-training and are added to the wordpiece
-            # embedding vector (and position vector). This is not *strictly* necessary
-            # since the [SEP] token unambiguously separates the sequences, but it makes
-            # it easier for the model to learn the concept of sequences.
-            #
-            # For classification tasks, the first vector (corresponding to [CLS]) is
-            # used as as the "sentence vector". Note that this only makes sense because
-            # the entire model is fine-tuned.
-            tokens = tokens_a + [sep_token]
-            segment_ids = [sequence_a_segment_id] * len(tokens)
-            pos_tokens = pos_tokens_a + [special_token_pos]
+                    if cls_token_at_end:
+                        tokens = tokens + [cls_token]
+                        segment_ids = segment_ids + [cls_token_segment_id]
+                        if args.zero_syntax_for_special_tokens:
+                            pos_tokens = pos_tokens + ["[NONE]"]
+                            dep_tokens = dep_tokens + ["[NONE]"]
+                        else:
+                            pos_tokens = pos_tokens + ["[CLS_POS]"]
+                            dep_tokens = dep_tokens + ["[CLS_DEP]"]
+                    else:
+                        tokens = [cls_token] + tokens
+                        segment_ids = [cls_token_segment_id] + segment_ids
+                        if args.zero_syntax_for_special_tokens:
+                            pos_tokens = ["[NONE]"] + pos_tokens
+                            dep_tokens = ["[NONE]"] + dep_tokens
+                        else:
+                            pos_tokens = ["[CLS_POS]"] + pos_tokens
+                            dep_tokens = ["[CLS_DEP]"] + dep_tokens
 
-            tokens += tokens_b + [sep_token]
-            segment_ids += [sequence_b_segment_id] * (len(tokens_b) + 1)
-            pos_tokens += pos_tokens_b + [special_token_pos]
+                    input_ids = tokenizer.convert_tokens_to_ids(tokens)
+                    pos_ids = tokenizer.convert_tokens_to_ids(pos_tokens)
+                    dep_ids = tokenizer.convert_tokens_to_ids(dep_tokens)
 
-            if cls_token_at_end:
-                tokens = tokens + [cls_token]
-                segment_ids = segment_ids + [cls_token_segment_id]
-                pos_tokens = pos_tokens + [special_token_pos]
+                    # The mask has 1 for real tokens and 0 for padding tokens. Only real
+                    # tokens are attended to.
+                    input_mask = [1 if mask_padding_with_zero else 0] * len(input_ids)
+
+                    # Zero-pad up to the sequence length.
+                    padding_length = max_seq_length - len(input_ids)
+                    if pad_on_left:
+                        input_ids = ([pad_token] * padding_length) + input_ids
+                        input_mask = ([0 if mask_padding_with_zero else 1] * padding_length) + input_mask
+                        segment_ids = ([pad_token_segment_id] * padding_length) + segment_ids
+                        pos_ids = ([pad_token] * padding_length) + pos_ids
+                        dep_ids = ([pad_token] * padding_length) + dep_ids
+                    else:
+                        input_ids = input_ids + \
+                                    ([pad_token] * padding_length)  # [pad_token] defined as 0, the [PAD] token's id
+                        input_mask = input_mask + ([0 if mask_padding_with_zero else 1] * padding_length)
+                        segment_ids = segment_ids + ([pad_token_segment_id] * padding_length)
+                        pos_ids = pos_ids + ([pad_token] * padding_length)
+                        dep_ids = dep_ids + ([pad_token] * padding_length)
+
+                    assert len(input_ids) == max_seq_length
+                    assert len(input_mask) == max_seq_length
+                    assert len(segment_ids) == max_seq_length
+                    assert len(pos_ids) == max_seq_length
+                    assert len(dep_ids) == max_seq_length
+
+                    # Append context-pair to the pairs list.
+                    # This simple if statement works, as gloss extensions require the use of pos
+                    if args.use_dependencies and args.use_dependencies:
+                        pairs.append(
+                            BertInput(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
+                                      pos_ids=pos_ids, dep_ids=dep_ids,
+                                      label_id=label)
+                        )
+                    elif args.use_dependencies and not args.use_dependencies:
+                        pairs.append(
+                            BertInput(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
+                                      pos_ids=pos_ids, label_id=label)
+                        )
+                    elif not args.use_dependencies and args.use_dependencies:
+                        pairs.append(
+                            BertInput(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
+                                      dep_ids=dep_ids, label_id=label)
+                        )
+
+                features.append(pairs)
+
             else:
-                tokens = [cls_token] + tokens
-                segment_ids = [cls_token_segment_id] + segment_ids
-                pos_tokens = [special_token_pos] + pos_tokens
+                for seq, label in sequences:  # seq is the gloss, label is either 0 or 1
+                    tokens_b = tokenizer.tokenize(seq)
 
-            input_ids = tokenizer.convert_tokens_to_ids(tokens)
-            pos_ids = tokenizer.convert_tokens_to_ids(pos_tokens)
+                    # Modifies `tokens_a` and `tokens_b` in place so that the total
+                    # length is less than the specified length.
+                    # Account for [CLS], [SEP], [SEP] with "- 3"
+                    _truncate_seq_pair(tokens_a, tokens_b, max_seq_length - 3)
 
-            # The mask has 1 for real tokens and 0 for padding tokens. Only real
-            # tokens are attended to.
-            input_mask = [1 if mask_padding_with_zero else 0] * len(input_ids)
+                    # The convention in BERT is:
+                    # (a) For sequence pairs:
+                    #  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
+                    #  type_ids:   0   0  0    0    0     0       0   0   1  1  1  1   1   1
+                    #
+                    # Where "type_ids" are used to indicate whether this is the first
+                    # sequence or the second sequence. The embedding vectors for `type=0` and
+                    # `type=1` were learned during pre-training and are added to the wordpiece
+                    # embedding vector (and position vector). This is not *strictly* necessary
+                    # since the [SEP] token unambiguously separates the sequences, but it makes
+                    # it easier for the model to learn the concept of sequences.
+                    #
+                    # For classification tasks, the first vector (corresponding to [CLS]) is
+                    # used as as the "sentence vector". Note that this only makes sense because
+                    # the entire model is fine-tuned.
+                    tokens = tokens_a + [sep_token]
+                    segment_ids = [sequence_a_segment_id] * len(tokens)
 
-            # Zero-pad up to the sequence length.
-            padding_length = max_seq_length - len(input_ids)
-            if pad_on_left:
-                input_ids = ([pad_token] * padding_length) + input_ids
-                input_mask = ([0 if mask_padding_with_zero else 1] * padding_length) + input_mask
-                segment_ids = ([pad_token_segment_id] * padding_length) + segment_ids
-                pos_ids = ([special_token_pos] * padding_length) + pos_ids
-            else:
-                input_ids = input_ids + ([pad_token] * padding_length)  # [pad_token] defined as 0, the [PAD] token's id
-                input_mask = input_mask + ([0 if mask_padding_with_zero else 1] * padding_length)
-                segment_ids = segment_ids + ([pad_token_segment_id] * padding_length)
-                pos_ids = pos_ids + ([special_token_pos] * padding_length)
+                    tokens += tokens_b + [sep_token]
+                    segment_ids += [sequence_b_segment_id] * (len(tokens_b) + 1)
 
-            assert len(input_ids) == max_seq_length
-            assert len(input_mask) == max_seq_length
-            assert len(segment_ids) == max_seq_length
-            assert len(pos_ids) == max_seq_length
+                    if cls_token_at_end:
+                        tokens = tokens + [cls_token]
+                        segment_ids = segment_ids + [cls_token_segment_id]
+                    else:
+                        tokens = [cls_token] + tokens
+                        segment_ids = [cls_token_segment_id] + segment_ids
 
-            # These are the input embedding IDs, the input mask, segment IDs and labels. What exactly is label?
-            pairs.append(
-                BertInput(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids, pos_ids=pos_ids, label_id=label)
-            )
+                    input_ids = tokenizer.convert_tokens_to_ids(tokens)
 
-        features.append(pairs)
+                    # The mask has 1 for real tokens and 0 for padding tokens. Only real
+                    # tokens are attended to.
+                    input_mask = [1 if mask_padding_with_zero else 0] * len(input_ids)
+
+                    # Zero-pad up to the sequence length.
+                    padding_length = max_seq_length - len(input_ids)
+                    if pad_on_left:
+                        input_ids = ([pad_token] * padding_length) + input_ids
+                        input_mask = ([0 if mask_padding_with_zero else 1] * padding_length) + input_mask
+                        segment_ids = ([pad_token_segment_id] * padding_length) + segment_ids
+                    else:
+                        input_ids = input_ids + (
+                                    [pad_token] * padding_length)  # [pad_token] defined as 0, the [PAD] token's id
+                        input_mask = input_mask + ([0 if mask_padding_with_zero else 1] * padding_length)
+                        segment_ids = segment_ids + ([pad_token_segment_id] * padding_length)
+
+                    assert len(input_ids) == max_seq_length
+                    assert len(input_mask) == max_seq_length
+                    assert len(segment_ids) == max_seq_length
+
+                    # These are the input embedding IDs, the input mask, segment IDs and labels.
+                    pairs.append(
+                        BertInput(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids, label_id=label)
+                    )
+
+                features.append(pairs)
 
     return features
 
