@@ -185,7 +185,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
             # ====== Add the [TGT] tokens back in ======
             # Make [TGT]'s token entries (as in text, POS, dependencies, tokenized form)
             if args.zero_syntax_for_special_tokens:
-                spacy_tgt_list = [('[TGT]', '[NONE]', "[NONE]", ['[TGT]'])]
+                spacy_tgt_list = [('[TGT]', '[PAD]', "[PAD]", ['[TGT]'])]
             else:
                 spacy_tgt_list = [('[TGT]', '[TGT_POS]', "[TGT_DEP]", ['[TGT]'])]
 
@@ -295,7 +295,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                 target_word_tokens = tokenizer.tokenize(target_word)
                 number_of_target_tokens = len(target_word_tokens)
                 target_pos = [gloss_extension[1]]*number_of_target_tokens
-                target_dep = ["[NONE_DEP]"]*number_of_target_tokens
+                target_dep = ["[PAD]"]*number_of_target_tokens
 
                 # Max sequence length with spots reserved for [CLS], [SEP] and target word tokens
                 msl_with_gloss_extension = max_seq_length - 3 - number_of_target_tokens
@@ -309,8 +309,8 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                 tokens = tokens_a + [sep_token] + target_word_tokens
                 segment_ids = [sequence_a_segment_id] * len(tokens)
                 if args.zero_syntax_for_special_tokens:
-                    pos_tokens = bert_pos_tokens_a + ["[NONE]"] + target_pos
-                    dep_tokens = bert_dep_tokens_a + ["[NONE]"] + target_dep
+                    pos_tokens = bert_pos_tokens_a + ["[PAD]"] + target_pos
+                    dep_tokens = bert_dep_tokens_a + ["[PAD]"] + target_dep
                 else:
                     pos_tokens = bert_pos_tokens_a + ["[SEP_POS]"] + target_pos
                     dep_tokens = bert_dep_tokens_a + ["[SEP_DEP]"] + target_dep
@@ -319,8 +319,8 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                 # +1 to account for [SEP] token
                 segment_ids += [sequence_b_segment_id] * (len(tokens_b) + 1)
                 if args.zero_syntax_for_special_tokens:
-                    pos_tokens += bert_pos_tokens_b + ["[NONE]"]
-                    dep_tokens += bert_dep_tokens_b + ["[NONE]"]
+                    pos_tokens += bert_pos_tokens_b + ["[PAD]"]
+                    dep_tokens += bert_dep_tokens_b + ["[PAD]"]
                 else:
                     pos_tokens += bert_pos_tokens_b + ["[SEP_POS]"]
                     dep_tokens += bert_dep_tokens_b + ["[SEP_DEP]"]
@@ -329,8 +329,8 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                     tokens = tokens + [cls_token]
                     segment_ids = segment_ids + [cls_token_segment_id]
                     if args.zero_syntax_for_special_tokens:
-                        pos_tokens = pos_tokens + ["[NONE]"]
-                        dep_tokens = dep_tokens + ["[NONE]"]
+                        pos_tokens = pos_tokens + ["[PAD]"]
+                        dep_tokens = dep_tokens + ["[PAD]"]
                     else:
                         pos_tokens = pos_tokens + ["[CLS_POS]"]
                         dep_tokens = dep_tokens + ["[CLS_DEP]"]
@@ -338,8 +338,8 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                     tokens = [cls_token] + tokens
                     segment_ids = [cls_token_segment_id] + segment_ids
                     if args.zero_syntax_for_special_tokens:
-                        pos_tokens = ["[NONE]"] + pos_tokens
-                        dep_tokens = ["[NONE]"] + dep_tokens
+                        pos_tokens = ["[PAD]"] + pos_tokens
+                        dep_tokens = ["[PAD]"] + dep_tokens
                     else:
                         pos_tokens = ["[CLS_POS]"] + pos_tokens
                         dep_tokens = ["[CLS_DEP]"] + dep_tokens
