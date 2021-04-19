@@ -111,6 +111,7 @@ python3 script/prepare_dataset_syntax.py \
     --use_augmentation \
     --use_pos \
     --use_dependencies \
+    --use_dependencies \
     --cross_pos_train
 ```
 
@@ -200,6 +201,24 @@ python script/run_model.py \
     --num_train_epochs 4 \
     --logging_steps 1000 \
     --save_steps 1000
+```
+
+
+THE EXAMPLE TO USE
+```
+python3 script/run_model_syntax.py \
+    --do_train \
+    --train_path "data/train/small_train.csv" \
+    --model_name_or_path "bert-base-uncased" \
+    --output_dir "model/bert_base-augmented-batch_size=128-lr=2e-5-max_gloss=6-pos" \
+    --per_gpu_train_batch_size 8 \
+    --gradient_accumulation_steps 1 \
+    --learning_rate 2e-5 \
+    --num_train_epochs 2 \
+    --logging_steps 1000 \
+    --save_steps 1000 \
+    --use_pos \
+    --use_dep
 ```
 
 

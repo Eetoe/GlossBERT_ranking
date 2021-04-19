@@ -7,6 +7,14 @@ from tqdm import tqdm
 import spacy
 import regex as re
 
+BertInputPosDep = namedtuple("BertInputPosDep",
+                             ["input_ids", "input_mask", "segment_ids", "pos_ids", "dep_ids", "label_id"])
+BertInputPos = namedtuple("BertInputPos",
+                          ["input_ids", "input_mask", "segment_ids", "pos_ids", "label_id"])
+BertInputDep = namedtuple("BertInputDep",
+                          ["input_ids", "input_mask", "segment_ids", "dep_ids", "label_id"])
+BertInput = namedtuple("BertInput",
+                       ["input_ids", "input_mask", "segment_ids", "label_id"])
 
 """
 load_dataset(): loads the dataset and prepares it for BERT
@@ -24,18 +32,21 @@ write_predictions(): used to write the model's predictions during evaluation to 
 """
 
 
-def load_dataset(args, csv_path, tokenizer, max_sequence_length, spacy_model):
+def load_dataset(args, csv_path, tokenizer, max_sequence_length, spacy_model=None):
     # Change deserialization function depending
     if args.use_gloss_extension:
         GlossSelectionRecord = namedtuple("GlossSelectionRecord",
                                           ["guid", "sentence", "sense_keys",
                                            "glosses", "gloss_extensions",
                                            "targets"])
+
         def deserialize_csv_record(row):
-            return GlossSelectionRecord(row[0], row[1], eval(row[2]), eval(row[3]), eval(row[4]), [int(t) for t in eval(row[5])])
+            return GlossSelectionRecord(row[0], row[1], eval(row[2]), eval(row[3]), eval(row[4]),
+                                        [int(t) for t in eval(row[5])])
     else:
         GlossSelectionRecord = namedtuple("GlossSelectionRecord",
                                           ["guid", "sentence", "sense_keys", "glosses", "targets"])
+
         def deserialize_csv_record(row):
             return GlossSelectionRecord(row[0], row[1], eval(row[2]), eval(row[3]), [int(t) for t in eval(row[4])])
 
@@ -92,6 +103,7 @@ def _create_records_from_csv(csv_path, deserialize_fn):
 
         return [deserialize_fn(row) for row in reader]
 
+
 def _truncate_seq_pair(tokens_a, tokens_b, max_length):
     """Truncates a sequence pair in place to the maximum length."""
 
@@ -108,12 +120,14 @@ def _truncate_seq_pair(tokens_a, tokens_b, max_length):
         else:
             tokens_b.pop()
 
+
 # Creates features, i.e., the input given to BERT, to train on.
-def _create_features_from_records(args, spacy_model, records, max_seq_length, tokenizer, cls_token_at_end=False, pad_on_left=False,
+def _create_features_from_records(args, spacy_model, records, max_seq_length, tokenizer, cls_token_at_end=False,
+                                  pad_on_left=False,
                                   cls_token='[CLS]', sep_token='[SEP]', pad_token=0,
                                   sequence_a_segment_id=0, sequence_b_segment_id=1,
                                   cls_token_segment_id=1, pad_token_segment_id=0,
-                                  mask_padding_with_zero=True, disable_progress_bar=False,):
+                                  mask_padding_with_zero=True, disable_progress_bar=False, ):
     """ Convert records to list of features. Each feature is a list of sub-features where the first element is
         always the feature created from context-gloss pair while the rest of the elements are features created from
         context-example pairs (if available)
@@ -126,17 +140,11 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
     if args.use_pos or args.use_dependencies:
         spacy_model = spacy_model
 
-    # Set up BERT input, might be smarter to do in the different if statements
-    # yes: simpler code to read
-    # No: only needs to be done once, not at every step in loop
-    if args.use_pos and args.use_dependencies:
-        BertInput = namedtuple("BertInput", ["input_ids", "input_mask", "segment_ids", "pos_ids", "dep_ids", "label_id"])
-    elif args.use_pos and not args.use_dependencies:
-        BertInput = namedtuple("BertInput", ["input_ids", "input_mask", "segment_ids", "pos_ids", "label_id"])
-    elif not args.use_pos and args.use_dependencies:
-        BertInput = namedtuple("BertInput", ["input_ids", "input_mask", "segment_ids", "dep_ids", "label_id"])
-    else:
-        BertInput = namedtuple("BertInput", ["input_ids", "input_mask", "segment_ids", "label_id"])
+        if args.zero_syntax_for_special_tokens:
+            # Make [TGT]'s token entries (as in text, POS, dependencies, tokenized form)
+            spacy_tgt_tpl = ('[TGT]', '[PAD]', "[PAD]", ['[TGT]'])
+        else:
+            spacy_tgt_tpl = ('[TGT]', '[TGT_POS]', "[TGT_DEP]", ['[TGT]'])
 
     features = []
     for record in tqdm(records, disable=disable_progress_bar):
@@ -148,205 +156,168 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
         """
         if args.use_pos or args.use_dependencies:
             """
-            Spacy is analyzing the sentence without the [TGT] tokens. To do this, the following is needed:
-             - the target word is found
-             - then the sentence is checked for multiple instances of the target word
-                - Example of multiple instances: "Did he [TGT] plant [TGT] the plant yet ?"
-             - If there are multiple instances of the target word, keep track of which one is the target
-             - Remove [TGT] tokens for spacy
-             - Analyse sentence without [TGT] tokens using spacy
-             - Split the sentence into three parts:
-                - the tokens before the target
-                - the target
-                - the tokens after the target
-             - insert the [TGT] tokens before and after the target
-             - create tokens for the sentence
+                - Analyze the sentence with and without [TGT] tokens using SpaCy
+                - Check if the two analyses are equal. If not, use the one without the [TGT] tokens
+                    - Ensures the correct SpaCy analysis is used & eliminates the need to reinsert the [TGT] tokens
+                - Create the context tokens of the context-gloss pair.
             """
-            # ====== Find target ======
+            # ====== Analyze the sentence ======
             sentence = record.sentence
-            dissect_sent = re.findall("(.*)(\[TGT\]\s)(\w+)(\s\[TGT\])(.*)", sentence)
-            # The reason why the indexing below works is that the (.*) still creates an empty element "".
-            target_word = dissect_sent[0][2]
-            # Find the instance of the target word that is the target
-            instances_of_target_word = re.findall(f"({target_word})(\s\[TGT\])*", sentence)
-            # print(instances_of_target_word)
-            for i, instance in enumerate(instances_of_target_word):
-                if instance[1] == " [TGT]":
-                    instance_that_is_target = i
+            # For sentences like "Kids were [TGT] break [TGT]-dancing at the street corner":
+            #   - Make sure to insert a space before/after the target tokens
+            sentence = re.sub(r"(\[TGT\])([^ ])", r"\1 \2", sentence)
+            sentence = re.sub(r"([^ ])(\[TGT\])", r"\1 \2", sentence)
 
-            # ====== Remove [TGT] tokens ======
+            # Create sentence without [TGT] tokens
             no_tgt_sent = re.sub(r"\[TGT\]", "", sentence).strip()
             no_tgt_sent = re.sub(r"\s{2,}", " ", no_tgt_sent)
 
-            # ====== Analyze sentence using spacy ======
+            # Analyze sentence with and without [TGT] tokens
             spacy_doc = spacy_model(no_tgt_sent)
             spacy_tokens = [(token.text, token.pos_, token.dep_, tokenizer.tokenize(token.text)) for token in spacy_doc]
+            tgt_doc = spacy_model(sentence)
+            tgt_tokens = [(token.text, token.pos_, token.dep_, tokenizer.tokenize(token.text)) for token in tgt_doc]
 
-            # ====== Add the [TGT] tokens back in ======
-            # Make [TGT]'s token entries (as in text, POS, dependencies, tokenized form)
-            if args.zero_syntax_for_special_tokens:
-                spacy_tgt_list = [('[TGT]', '[PAD]', "[PAD]", ['[TGT]'])]
+            # Check if the Spacy analysis is the same with and without [TGT] tokens
+            tgt_tokens2 = [ele for ele in tgt_tokens if ele[0] != "[TGT]"]
+            if tgt_tokens2 == spacy_tokens:
+                # If they're the same, simply add the predefined, correct tokens for [TGT]
+                complete_tokens = [ele if ele[0] != "[TGT]" else spacy_tgt_tpl for ele in tgt_tokens]
             else:
-                spacy_tgt_list = [('[TGT]', '[TGT_POS]', "[TGT_DEP]", ['[TGT]'])]
+                # Find the indexes of the [TGT] words and add the predefined [TGT] tokens add those indexes
+                tgt_index = [i for i, tokens in enumerate(tgt_tokens) if tokens[0] == "[TGT]"]
+                complete_tokens = spacy_tokens
+                complete_tokens.insert(tgt_index[0], spacy_tgt_tpl)
+                complete_tokens.insert(tgt_index[1], spacy_tgt_tpl)
 
-            # Add the [TGT] tokens to the sentence again
-            # get index of all instances of the target word. Non-target words have index None
-            tgt_indexes = [i if tokens[0] == target_word else None for i, tokens in enumerate(spacy_tokens)]
-            # Remove all None from the tgt indexes to be left only with the indexes of the possible targets
-            tgt_indexes = [ele for ele in tgt_indexes if ele != None]
-            # Keep only the index of the instance of the target word that is actually the target
-            tgt_index = [index for num, index in enumerate(tgt_indexes) if num == instance_that_is_target]
-
-            # Split the sentence into three parts:
-            #  - The part before the target
-            #  - The target
-            #  - The part after the target
-            # Before the target token
-            if tgt_index[0] == 0:  # If the target is the first token of the sentence
-                tokens_before_tgt = []
-            elif tgt_index == len(spacy_tokens) - 1:  # if the target is the last word of the sentence
-                tokens_before_tgt = spacy_tokens[0:-1]
-            else:
-                tokens_before_tgt = spacy_tokens[0:tgt_index[0]]
-
-            # The target token
-            tgt_word_token = [spacy_tokens[tgt_index[0]]]
-
-            # After the target token
-            if tgt_index[0] == 0:  # if the target is the first word
-                tokens_after_tgt = spacy_tokens[1:]
-            elif tgt_index[0] == len(spacy_tokens) - 1:  # if the target is the last word of the sentence
-                tokens_after_tgt = []
-            else:
-                tokens_after_tgt = spacy_tokens[tgt_index[0]:]
-
-            spacy_tokens_complete = tokens_before_tgt +\
-                                    spacy_tgt_list + tgt_word_token + spacy_tgt_list +\
-                                    tokens_after_tgt
-
-            # ====== Create the tokens to feed to BERT ======
-            tokens_a = [word for sublist in spacy_tokens_complete for word in sublist[3]]
-
-            if args.use_pos:
-                bert_pos_tokens_a = [[ele[1]] * len(ele[3]) for ele in spacy_tokens_complete]
-                bert_pos_tokens_a = [pos if re.search(r"^\[.+\]$", pos) else "[" + pos + "]"
-                                     for sublist in bert_pos_tokens_a for pos in sublist]
-                assert (len(tokens_a) == len(bert_pos_tokens_a))
-            if args.use_dependencies:
-                bert_dep_tokens_a = [[ele[2]] * len(ele[3]) for ele in spacy_tokens_complete]
-                bert_dep_tokens_a = [dep if re.search(r"^\[.+\]$", dep) else "[" + dep + "]"
-                                     for sublist in bert_dep_tokens_a for dep in sublist]
-                assert (len(tokens_a) == len(bert_dep_tokens_a))
+            # ====== Create the context tokens for the context-gloss pairs for BERT ======
+            tokens_a = [token for sublist in complete_tokens for token in sublist[3]]
+            bert_pos_tokens_a = [[ele[1]] * len(ele[-1]) for ele in complete_tokens]
+            bert_pos_tokens_a = [pos if re.search(r"^\[.+\]$", pos) else "[" + pos + "]"
+                                 for sublist in bert_pos_tokens_a for pos in sublist]
+            bert_dep_tokens_a = [[ele[2]] * len(ele[-1]) for ele in complete_tokens]
+            bert_dep_tokens_a = [dep if re.search(r"^\[.+\]$", dep) else "[" + dep + "]"
+                                 for sublist in bert_dep_tokens_a for dep in sublist]
+            assert (len(tokens_a) == len(bert_pos_tokens_a) == len(bert_dep_tokens_a))
 
         else:
             tokens_a = tokenizer.tokenize(record.sentence)
 
-
-
         # ====== Create tokens for BERT from the gloss ======
         """
-            - First create the case where gloss extension is used. This requires POS by default.
-                - both pos and dep are found, only relevant information is passed on.
-            - Create the case where gloss extension isn't used.
-                - Using syntax info. Both pos and dep found, only relevant passed on.
-                - Without syntax, i.e. the original script.
+            - First create tokens for when gloss extensions are used. Gloss extensions only make sense with pos.
+            - Then create tokens for when gloss extensions aren't used. There are two cases:
+                - When syntax info is used
+                - When syntax info isn't used
+            
+            - Procedure for each case:
+                - create tokens from the sentence (context of context-gloss pairs).
+                - create tokens from the gloss (gloss of context-gloss pairs).
+                - merge the context and gloss tokens, make sure they don't exceed max input length and
+                  add the [CLS] and [SEP] tokens.
         
         """
-        # in tqdm: get the gloss from the record and a 1 if i is in the record targets or 0 if i is not in the record targets.
-        # It only makes sense to use the gloss extension when POS is used, as dep is not guaranteed for any sense
-        if args.use_gloss_extension:
-            sequences = [(gloss, 1 if i in record.targets else 0, record.gloss_extensions[i])
-                         for i, gloss in enumerate(record.glosses)]
-        else:
-            sequences = [(gloss, 1 if i in record.targets else 0) for i, gloss in enumerate(record.glosses)]
 
         # Make empty list for context-gloss pairs
         pairs = []
 
         # ====== Using gloss extension ======
         if args.use_gloss_extension:
+            # Get the gloss from the record; 1 if i is in the record targets or 0 if i is not in the record targets.
+            # It only makes sense to use the gloss extension when POS is used, as dep is not guaranteed for any sense
+            sequences = [(gloss, 1 if i in record.targets else 0, record.gloss_extensions[i])
+                         for i, gloss in enumerate(record.glosses)]
+
             # Since gloss extension is only used alongside pos, the spacy analysis is always done here.
             for seq, label, gloss_extension in sequences:  # seq is the gloss, label is either 0 or 1
                 # ====== Analyze sentence using spacy ======
                 spacy_doc = spacy_model(seq)
                 spacy_tokens_complete = [(token.text, token.pos_, token.dep_, tokenizer.tokenize(token.text))
-                                for token in spacy_doc]
+                                         for token in spacy_doc]
 
-                # ====== Create the tokens to feed to BERT ======
+                # ====== Create the gloss tokens to feed to BERT ======
                 tokens_b = [word for sublist in spacy_tokens_complete for word in sublist[3]]
 
-                if args.use_pos:
-                    bert_pos_tokens_b = [[ele[1]] * len(ele[3]) for ele in spacy_tokens_complete]
-                    bert_pos_tokens_b = [pos if re.search(r"^\[.+\]$", pos) else "[" + pos + "]"
-                                         for sublist in bert_pos_tokens_b for pos in sublist]
-                    assert (len(tokens_b) == len(bert_pos_tokens_b))
+
+                bert_pos_tokens_b = [[ele[1]] * len(ele[3]) for ele in spacy_tokens_complete]
+                bert_pos_tokens_b = [pos if re.search(r"^\[.+\]$", pos) else "[" + pos + "]"
+                                     for sublist in bert_pos_tokens_b for pos in sublist]
+                assert (len(tokens_b) == len(bert_pos_tokens_b))
                 if args.use_dependencies:
                     bert_dep_tokens_b = [[ele[2]] * len(ele[3]) for ele in spacy_tokens_complete]
                     bert_dep_tokens_b = [dep if re.search(r"^\[.+\]$", dep) else "[" + dep + "]"
                                          for sublist in bert_dep_tokens_b for dep in sublist]
                     assert (len(tokens_b) == len(bert_dep_tokens_b))
 
-
-
-                # Modifies `tokens_a` and `tokens_b` in place so that the total
-                # length is less than the specified length.
-                # Account for [CLS], [SEP], gloss extension, [SEP]
-
+                # ====== Create the gloss extension ======
+                target_word = re.sub("_", " ", gloss_extension[0])
                 target_word_tokens = tokenizer.tokenize(target_word)
                 number_of_target_tokens = len(target_word_tokens)
-                target_pos = [gloss_extension[1]]*number_of_target_tokens
-                target_dep = ["[PAD]"]*number_of_target_tokens
+                target_pos = [gloss_extension[1]] * number_of_target_tokens
+                if args.use_dependencies:
+                    target_dep = ["[PAD]"] * number_of_target_tokens
 
+                # ====== Merge the context and gloss tokens to form the context gloss pair ======
                 # Max sequence length with spots reserved for [CLS], [SEP] and target word tokens
                 msl_with_gloss_extension = max_seq_length - 3 - number_of_target_tokens
 
                 # Truncate based on msl_with_gloss_extension
                 _truncate_seq_pair(tokens_a, tokens_b, msl_with_gloss_extension)
                 _truncate_seq_pair(bert_pos_tokens_a, bert_pos_tokens_b, msl_with_gloss_extension)
-                _truncate_seq_pair(bert_dep_tokens_a, bert_dep_tokens_b, msl_with_gloss_extension)
+                if args.use_dependencies:
+                    _truncate_seq_pair(bert_dep_tokens_a, bert_dep_tokens_b, msl_with_gloss_extension)
 
                 # Now the tokens of the context and gloss halves are merged together.
-                tokens = tokens_a + [sep_token] + target_word_tokens
+                tokens = tokens_a + [sep_token]
                 segment_ids = [sequence_a_segment_id] * len(tokens)
                 if args.zero_syntax_for_special_tokens:
                     pos_tokens = bert_pos_tokens_a + ["[PAD]"] + target_pos
-                    dep_tokens = bert_dep_tokens_a + ["[PAD]"] + target_dep
+                    if args.use_dependencies:
+                        dep_tokens = bert_dep_tokens_a + ["[PAD]"] + target_dep
                 else:
                     pos_tokens = bert_pos_tokens_a + ["[SEP_POS]"] + target_pos
-                    dep_tokens = bert_dep_tokens_a + ["[SEP_DEP]"] + target_dep
+                    if args.use_dependencies:
+                        dep_tokens = bert_dep_tokens_a + ["[SEP_DEP]"] + target_dep
 
-                tokens += tokens_b + [sep_token]
+                tokens += + target_word_tokens + tokens_b + [sep_token]
                 # +1 to account for [SEP] token
-                segment_ids += [sequence_b_segment_id] * (len(tokens_b) + 1)
+                segment_ids += [sequence_b_segment_id] * (len(tokens_b) + 1 + number_of_target_tokens)
                 if args.zero_syntax_for_special_tokens:
-                    pos_tokens += bert_pos_tokens_b + ["[PAD]"]
-                    dep_tokens += bert_dep_tokens_b + ["[PAD]"]
+                    pos_tokens += target_pos + bert_pos_tokens_b + ["[PAD]"]
+                    if args.use_dependencies:
+                        dep_tokens += target_dep + bert_dep_tokens_b + ["[PAD]"]
                 else:
                     pos_tokens += bert_pos_tokens_b + ["[SEP_POS]"]
-                    dep_tokens += bert_dep_tokens_b + ["[SEP_DEP]"]
+                    if args.use_dependencies:
+                        dep_tokens += bert_dep_tokens_b + ["[SEP_DEP]"]
 
                 if cls_token_at_end:
                     tokens = tokens + [cls_token]
                     segment_ids = segment_ids + [cls_token_segment_id]
                     if args.zero_syntax_for_special_tokens:
                         pos_tokens = pos_tokens + ["[PAD]"]
-                        dep_tokens = dep_tokens + ["[PAD]"]
+                        if args.use_dependencies:
+                            dep_tokens = dep_tokens + ["[PAD]"]
                     else:
                         pos_tokens = pos_tokens + ["[CLS_POS]"]
-                        dep_tokens = dep_tokens + ["[CLS_DEP]"]
+                        if args.use_dependencies:
+                            dep_tokens = dep_tokens + ["[CLS_DEP]"]
                 else:
                     tokens = [cls_token] + tokens
                     segment_ids = [cls_token_segment_id] + segment_ids
                     if args.zero_syntax_for_special_tokens:
                         pos_tokens = ["[PAD]"] + pos_tokens
-                        dep_tokens = ["[PAD]"] + dep_tokens
+                        if args.use_dependencies:
+                            dep_tokens = ["[PAD]"] + dep_tokens
                     else:
                         pos_tokens = ["[CLS_POS]"] + pos_tokens
-                        dep_tokens = ["[CLS_DEP]"] + dep_tokens
+                        if args.use_dependencies:
+                            dep_tokens = ["[CLS_DEP]"] + dep_tokens
 
                 input_ids = tokenizer.convert_tokens_to_ids(tokens)
-                pos_ids = tokenizer.convert_tokens_to_ids(pos_tokens)
-                dep_ids = tokenizer.convert_tokens_to_ids(dep_tokens)
+                pos_ids = tokenizer.convert_syntax_tokens_to_ids(pos_tokens, "pos")
+                if args.use_dependencies:
+                    dep_ids = tokenizer.convert_syntax_tokens_to_ids(dep_tokens, "dep")
 
                 # The mask has 1 for real tokens and 0 for padding tokens. Only real
                 # tokens are attended to.
@@ -359,39 +330,44 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                     input_mask = ([0 if mask_padding_with_zero else 1] * padding_length) + input_mask
                     segment_ids = ([pad_token_segment_id] * padding_length) + segment_ids
                     pos_ids = ([pad_token] * padding_length) + pos_ids
-                    dep_ids = ([pad_token] * padding_length) + dep_ids
+                    if args.use_dependencies:
+                        dep_ids = ([pad_token] * padding_length) + dep_ids
                 else:
                     input_ids = input_ids + \
                                 ([pad_token] * padding_length)  # [pad_token] defined as 0, the [PAD] token's id
                     input_mask = input_mask + ([0 if mask_padding_with_zero else 1] * padding_length)
                     segment_ids = segment_ids + ([pad_token_segment_id] * padding_length)
                     pos_ids = pos_ids + ([pad_token] * padding_length)
-                    dep_ids = dep_ids + ([pad_token] * padding_length)
+                    if args.use_dependencies:
+                        dep_ids = dep_ids + ([pad_token] * padding_length)
 
                 assert len(input_ids) == max_seq_length
                 assert len(input_mask) == max_seq_length
                 assert len(segment_ids) == max_seq_length
                 assert len(pos_ids) == max_seq_length
-                assert len(dep_ids) == max_seq_length
+                if args.use_dependencies:
+                    assert len(dep_ids) == max_seq_length
 
                 # Append context-pair to the pairs list.
                 # This simple if statement works, as gloss extensions require the use of pos
                 if args.use_dependencies:
                     pairs.append(
-                        BertInput(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
-                                  pos_ids=pos_ids, dep_ids=dep_ids,
-                                  label_id=label)
+                        BertInputPosDep(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
+                                        pos_ids=pos_ids, dep_ids=dep_ids,
+                                        label_id=label)
                     )
                 else:
                     pairs.append(
-                        BertInput(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
-                                  pos_ids=pos_ids, label_id=label)
+                        BertInputPos(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
+                                     pos_ids=pos_ids, label_id=label)
                     )
 
             features.append(pairs)
 
         # ====== Without gloss extension ======
         else:
+            # Get the gloss from the record; 1 if i is in the record targets or 0 if i is not in the record targets.
+            sequences = [(gloss, 1 if i in record.targets else 0) for i, gloss in enumerate(record.glosses)]
             # ====== When using syntax info =======
             if args.use_pos or args.use_dependencies:
                 for seq, label in sequences:  # seq is the gloss, label is either 0 or 1
@@ -400,33 +376,29 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                     spacy_tokens_complete = [(token.text, token.pos_, token.dep_, tokenizer.tokenize(token.text))
                                              for token in spacy_doc]
 
-                    # ====== Create the tokens to feed to BERT ======
+                    # ====== Create the gloss tokens to feed to BERT ======
                     tokens_b = [word for sublist in spacy_tokens_complete for word in sublist[3]]
+                    bert_pos_tokens_b = [[ele[1]] * len(ele[3]) for ele in spacy_tokens_complete]
+                    bert_pos_tokens_b = [pos if re.search(r"^\[.+\]$", pos) else "[" + pos + "]"
+                                         for sublist in bert_pos_tokens_b for pos in sublist]
+                    assert (len(tokens_b) == len(bert_pos_tokens_b))
+                    # if args.use_dependencies:
+                    bert_dep_tokens_b = [[ele[2]] * len(ele[3]) for ele in spacy_tokens_complete]
+                    bert_dep_tokens_b = [dep if re.search(r"^\[.+\]$", dep) else "[" + dep + "]"
+                                         for sublist in bert_dep_tokens_b for dep in sublist]
+                    assert (len(tokens_b) == len(bert_dep_tokens_b))
 
-                    if args.use_pos:
-                        bert_pos_tokens_b = [[ele[1]] * len(ele[3]) for ele in spacy_tokens_complete]
-                        bert_pos_tokens_b = [pos if re.search(r"^\[.+\]$", pos) else "[" + pos + "]"
-                                             for sublist in bert_pos_tokens_b for pos in sublist]
-                        assert (len(tokens_b) == len(bert_pos_tokens_b))
-                    if args.use_dependencies:
-                        bert_dep_tokens_b = [[ele[2]] * len(ele[3]) for ele in spacy_tokens_complete]
-                        bert_dep_tokens_b = [dep if re.search(r"^\[.+\]$", dep) else "[" + dep + "]"
-                                             for sublist in bert_dep_tokens_b for dep in sublist]
-                        assert (len(tokens_b) == len(bert_dep_tokens_b))
-
-                    # Modifies `tokens_a` and `tokens_b` in place so that the total
-                    # length is less than the specified length.
-                    # Account for [CLS], [SEP], gloss extension, [SEP]
-                    _truncate_seq_pair(tokens_a, tokens_b, max_seq_length-3)
-                    _truncate_seq_pair(bert_pos_tokens_a, bert_pos_tokens_b, max_seq_length-3)
-                    _truncate_seq_pair(bert_dep_tokens_a, bert_dep_tokens_b, max_seq_length-3)
+                    # ====== Merge the context and gloss tokens to form the context gloss pair ======
+                    _truncate_seq_pair(tokens_a, tokens_b, max_seq_length - 3)
+                    _truncate_seq_pair(bert_pos_tokens_a, bert_pos_tokens_b, max_seq_length - 3)
+                    _truncate_seq_pair(bert_dep_tokens_a, bert_dep_tokens_b, max_seq_length - 3)
 
                     # Now the tokens of the context and gloss halves are merged together.
                     tokens = tokens_a + [sep_token]
                     segment_ids = [sequence_a_segment_id] * len(tokens)
                     if args.zero_syntax_for_special_tokens:
-                        pos_tokens = bert_pos_tokens_a + ["[NONE]"]
-                        dep_tokens = bert_dep_tokens_a + ["[NONE]"]
+                        pos_tokens = bert_pos_tokens_a + ["[PAD]"]
+                        dep_tokens = bert_dep_tokens_a + ["[PAD]"]
                     else:
                         pos_tokens = bert_pos_tokens_a + ["[SEP_POS]"]
                         dep_tokens = bert_dep_tokens_a + ["[SEP_DEP]"]
@@ -435,8 +407,8 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                     # +1 to account for [SEP] token
                     segment_ids += [sequence_b_segment_id] * (len(tokens_b) + 1)
                     if args.zero_syntax_for_special_tokens:
-                        pos_tokens += bert_pos_tokens_b + ["[NONE]"]
-                        dep_tokens += bert_dep_tokens_b + ["[NONE]"]
+                        pos_tokens += bert_pos_tokens_b + ["[PAD]"]
+                        dep_tokens += bert_dep_tokens_b + ["[PAD]"]
                     else:
                         pos_tokens += bert_pos_tokens_b + ["[SEP_POS]"]
                         dep_tokens += bert_dep_tokens_b + ["[SEP_DEP]"]
@@ -445,8 +417,8 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                         tokens = tokens + [cls_token]
                         segment_ids = segment_ids + [cls_token_segment_id]
                         if args.zero_syntax_for_special_tokens:
-                            pos_tokens = pos_tokens + ["[NONE]"]
-                            dep_tokens = dep_tokens + ["[NONE]"]
+                            pos_tokens = pos_tokens + ["[PAD]"]
+                            dep_tokens = dep_tokens + ["[PAD]"]
                         else:
                             pos_tokens = pos_tokens + ["[CLS_POS]"]
                             dep_tokens = dep_tokens + ["[CLS_DEP]"]
@@ -454,15 +426,19 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                         tokens = [cls_token] + tokens
                         segment_ids = [cls_token_segment_id] + segment_ids
                         if args.zero_syntax_for_special_tokens:
-                            pos_tokens = ["[NONE]"] + pos_tokens
-                            dep_tokens = ["[NONE]"] + dep_tokens
+                            pos_tokens = ["[PAD]"] + pos_tokens
+                            dep_tokens = ["[PAD]"] + dep_tokens
                         else:
                             pos_tokens = ["[CLS_POS]"] + pos_tokens
                             dep_tokens = ["[CLS_DEP]"] + dep_tokens
 
+                    # When converting tokens to ids, it depends on whether the tokenizer has the syntax embedding.
+                    # This depends on args. Therefore, if statements based on args are implemented from here on out.
                     input_ids = tokenizer.convert_tokens_to_ids(tokens)
-                    pos_ids = tokenizer.convert_tokens_to_ids(pos_tokens)
-                    dep_ids = tokenizer.convert_tokens_to_ids(dep_tokens)
+                    if args.use_pos:
+                        pos_ids = tokenizer.convert_syntax_tokens_to_ids(pos_tokens, "pos")
+                    if args.use_dependencies:
+                        dep_ids = tokenizer.convert_syntax_tokens_to_ids(dep_tokens, "dep")
 
                     # The mask has 1 for real tokens and 0 for padding tokens. Only real
                     # tokens are attended to.
@@ -474,39 +450,44 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                         input_ids = ([pad_token] * padding_length) + input_ids
                         input_mask = ([0 if mask_padding_with_zero else 1] * padding_length) + input_mask
                         segment_ids = ([pad_token_segment_id] * padding_length) + segment_ids
-                        pos_ids = ([pad_token] * padding_length) + pos_ids
-                        dep_ids = ([pad_token] * padding_length) + dep_ids
+                        if args.use_pos:
+                            pos_ids = ([pad_token] * padding_length) + pos_ids
+                        if args.use_dependencies:
+                            dep_ids = ([pad_token] * padding_length) + dep_ids
                     else:
                         input_ids = input_ids + \
                                     ([pad_token] * padding_length)  # [pad_token] defined as 0, the [PAD] token's id
                         input_mask = input_mask + ([0 if mask_padding_with_zero else 1] * padding_length)
                         segment_ids = segment_ids + ([pad_token_segment_id] * padding_length)
-                        pos_ids = pos_ids + ([pad_token] * padding_length)
-                        dep_ids = dep_ids + ([pad_token] * padding_length)
+                        if args.use_pos:
+                            pos_ids = pos_ids + ([pad_token] * padding_length)
+                        if args.use_dependencies:
+                            dep_ids = dep_ids + ([pad_token] * padding_length)
 
                     assert len(input_ids) == max_seq_length
                     assert len(input_mask) == max_seq_length
                     assert len(segment_ids) == max_seq_length
-                    assert len(pos_ids) == max_seq_length
-                    assert len(dep_ids) == max_seq_length
+                    if args.use_pos:
+                        assert len(pos_ids) == max_seq_length
+                    if args.use_dependencies:
+                        assert len(dep_ids) == max_seq_length
 
                     # Append context-pair to the pairs list.
-                    # This simple if statement works, as gloss extensions require the use of pos
-                    if args.use_dependencies and args.use_dependencies:
+                    if args.use_pos and args.use_dependencies:
                         pairs.append(
-                            BertInput(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
-                                      pos_ids=pos_ids, dep_ids=dep_ids,
-                                      label_id=label)
+                            BertInputPosDep(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
+                                            pos_ids=pos_ids, dep_ids=dep_ids,
+                                            label_id=label)
                         )
-                    elif args.use_dependencies and not args.use_dependencies:
+                    elif args.use_pos and not args.use_dependencies:
                         pairs.append(
-                            BertInput(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
-                                      pos_ids=pos_ids, label_id=label)
+                            BertInputPos(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
+                                         pos_ids=pos_ids, label_id=label)
                         )
-                    elif not args.use_dependencies and args.use_dependencies:
+                    elif not args.use_pos and args.use_dependencies:
                         pairs.append(
-                            BertInput(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
-                                      dep_ids=dep_ids, label_id=label)
+                            BertInputDep(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
+                                         dep_ids=dep_ids, label_id=label)
                         )
 
                 features.append(pairs)
@@ -515,26 +496,12 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                 for seq, label in sequences:  # seq is the gloss, label is either 0 or 1
                     tokens_b = tokenizer.tokenize(seq)
 
-                    # Modifies `tokens_a` and `tokens_b` in place so that the total
-                    # length is less than the specified length.
-                    # Account for [CLS], [SEP], [SEP] with "- 3"
+                    # Truncate sentence gloss pair so thy're less than the maximum input length
+                    # -3 to make room for the [CLS] token and the 2 [SEP] tokens.
                     _truncate_seq_pair(tokens_a, tokens_b, max_seq_length - 3)
 
-                    # The convention in BERT is:
-                    # (a) For sequence pairs:
-                    #  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
-                    #  type_ids:   0   0  0    0    0     0       0   0   1  1  1  1   1   1
-                    #
-                    # Where "type_ids" are used to indicate whether this is the first
-                    # sequence or the second sequence. The embedding vectors for `type=0` and
-                    # `type=1` were learned during pre-training and are added to the wordpiece
-                    # embedding vector (and position vector). This is not *strictly* necessary
-                    # since the [SEP] token unambiguously separates the sequences, but it makes
-                    # it easier for the model to learn the concept of sequences.
-                    #
-                    # For classification tasks, the first vector (corresponding to [CLS]) is
-                    # used as as the "sentence vector". Note that this only makes sense because
-                    # the entire model is fine-tuned.
+                    # Start merging the context gloss pairs
+                    # The segment ids are built gradually to keep track of what's context and what's glosses
                     tokens = tokens_a + [sep_token]
                     segment_ids = [sequence_a_segment_id] * len(tokens)
 
@@ -562,7 +529,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                         segment_ids = ([pad_token_segment_id] * padding_length) + segment_ids
                     else:
                         input_ids = input_ids + (
-                                    [pad_token] * padding_length)  # [pad_token] defined as 0, the [PAD] token's id
+                                [pad_token] * padding_length)  # [pad_token] defined as 0, the [PAD] token's id
                         input_mask = input_mask + ([0 if mask_padding_with_zero else 1] * padding_length)
                         segment_ids = segment_ids + ([pad_token_segment_id] * padding_length)
 
@@ -576,7 +543,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                     )
 
                 features.append(pairs)
-
+    print(features[0][0])
     return features
 
 
@@ -612,6 +579,7 @@ def collate_batch_pos_dep(batch):
 
     return collated
 
+
 def collate_batch_pos(batch):
     # The following part(s) is unmodified
     max_seq_length = len(
@@ -640,6 +608,7 @@ def collate_batch_pos(batch):
         collated.append(sub_collated)
 
     return collated
+
 
 def collate_batch_dep(batch):
     # The following part(s) is unmodified
@@ -670,6 +639,7 @@ def collate_batch_dep(batch):
 
     return collated
 
+
 def collate_batch(batch):
     # The following part(s) is unmodified
     max_seq_length = len(
@@ -698,6 +668,7 @@ def collate_batch(batch):
 
     return collated
 
+
 # Indexing changed to fit row with POS information
 def write_predictions(output_dir, csv_path, predictions, suffix=None):
     # The following part(s) is modified
@@ -717,4 +688,3 @@ def write_predictions(output_dir, csv_path, predictions, suffix=None):
     with open(output_file, "w") as f:
         for predicted, (guid, candidates) in zip(predictions, records):
             print(f"{guid} {candidates[predicted]}", file=f)
-

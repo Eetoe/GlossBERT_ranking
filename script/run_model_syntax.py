@@ -38,6 +38,7 @@ from utils.dataset_syntax import load_dataset, write_predictions,\
 from utils.model_syntax import BERT_MODELS, BertWSD, get_model_and_tokenizer, forward_gloss_selection
 
 import spacy
+from spacy.symbols import ORTH
 import regex as re
 
 logger = logging.getLogger(__name__)
@@ -583,38 +584,13 @@ def main():
     if args.use_pos or args.use_dependencies:
         assert args.spacy_model in ["en_core_web_trf", "en_core_web_sm"],\
             'The spacy model has to be either "en_core_web_trf" or "en_core_web_sm". '
+        logger.info("Loading SpaCy model...\n")
         spacy_model = spacy.load(args.spacy_model)
-
-    # ====== Set up syntax vocabulary ======
-    if args.use_pos:
-        # Pos vocab to be added to the tokenizer
-        # https://github.com/explosion/spaCy/blob/master/spacy/glossary.py
-        pos_vocab_list = ["[ADJ]", "[ADP]", "[ADV]", "[AUX]", "[CCONJ]", "[CONJ]",
-                          "[DET]", "[INTJ]", "[NOUN]", "[NUM]", "[PART]", "[PRON]",
-                          "[PROPN]", "[PUNCT]", "[SCONJ]", "[SYM]", "[VERB]", "[X]",
-                          "[TGT_POS]", "[CLS_POS]", "[SEP_POS]",
-                          "[NONE_POS]", "[GLOSS_POS]"]
+        add_tgt = [{ORTH: "[TGT]"}]
+        spacy_model.tokenizer.add_special_case("[TGT]", add_tgt)
+        logger.info("SpaCy model loaded!\n")
     else:
-        pos_vocab_list = []
-
-    if args.use_dependencies:
-        # Dependency vocab to be added to the tokenizer
-        dep_vocab_sublist1 = ["[TGT_DEP]", "[CLS_DEP]", "[SEP_DEP]",
-                           "[NONE_DEP]", "[GLOSS_DEP]"]
-        labels = spacy_model.pipe_labels
-        dep_vocab_sublist2 = ["[" + dep + "]" for dep in labels['parser']]
-        dep_vocab_list = dep_vocab_sublist1 + dep_vocab_sublist2
-    else:
-        dep_vocab_list = []
-
-    if args.zero_syntax_for_special_tokens:
-        zero_out_list = ["[NONE]"]
-    else:
-        zero_out_list = []
-
-    special_tokens_to_add = ["[TGT]"]+pos_vocab_list+dep_vocab_list+zero_out_list
-
-
+        spacy_model = None
 
 
     # Set seed
@@ -623,7 +599,7 @@ def main():
     # Training
     if args.do_train:
         # Load pretrained model and tokenizer
-        model, tokenizer = get_model_and_tokenizer(args, special_tokens_to_add)
+        model, tokenizer = get_model_and_tokenizer(args)
 
         # Calculate batch size for data loader
         batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
