@@ -44,6 +44,7 @@ def get_all_wordnet_lemma_names():
 
     return results
 
+
 def _get_gloss_extension(key, _lemma, conversion_dict, args):
     # synset = wn.synset_from_sense_key(key) # <-- This is flawed, use below code instead.
     synset = wn.lemma_from_key(key).synset()

@@ -35,7 +35,8 @@ except ImportError:
 
 from utils.dataset_syntax import load_dataset, write_predictions, \
     collate_batch, collate_batch_pos_dep, collate_batch_pos, collate_batch_dep
-from utils.model_syntax import BERT_MODELS, BertWSDArgs, get_model_and_tokenizer, forward_gloss_selection
+from utils.model_syntax import BERT_MODELS, BertWSDArgs, get_model_and_tokenizer, forward_gloss_selection, \
+    BertTokenizerArgs, BertConfigSyntax
 
 import spacy
 from spacy.symbols import ORTH
@@ -154,9 +155,7 @@ def train(args, model, tokenizer, train_dataloader, eval_during_training=False):
             if steps_trained_in_current_epoch > 0:
                 steps_trained_in_current_epoch -= 1
                 continue
-            logger.info("batch started")
             model.train()
-            logger.info("start forward gloss selection")
             loss = forward_gloss_selection(args, model, batch)[0]
             #logger.info("forward gloss selection done")
             if args.n_gpu > 1:
@@ -298,7 +297,7 @@ def main():
         type=str,
         required=True,
         help="The output directory where the model predictions and checkpoints will be written."
-             " If auto_create, the scritp will automatically make a name based on the parameters.",
+             " If auto_create, the script will automatically make a name based on the parameters.",
     )
 
     # Other parameters
@@ -668,10 +667,64 @@ def main():
 
     # Evaluation
     if args.do_eval and args.local_rank in [-1, 0]:
+        logger.info("\nStart evaluation!\n")
+        # Load training args
+        training_args = torch.load(args.model_name_or_path + "/training_args.bin")
+
+        # Get the training args needed to initialize model and tokenizer
+        if training_args.use_pos_tags:
+            pos_vocab_path = training_args.output_dir + "/pos_vocab.txt"
+        if training_args.use_dependencies:
+            dep_vocab_path = training_args.output_dir + "/dep_vocab.txt"
+
+        config = BertConfigSyntax.from_pretrained(
+            args.model_name_or_path,
+            num_labels=2,
+            cache_dir=args.cache_dir if args.cache_dir else None
+        )
+        logger.info(f"Vocab size in config: {config.vocab_size}")
+        logger.info("Config loaded!\n")
+
+        model = BertWSDArgs.from_pretrained(
+            args.model_name_or_path,
+            args,
+            from_tf=bool('.ckpt' in args.model_name_or_path),
+            config=config,
+            cache_dir=args.cache_dir if args.cache_dir else None
+        )
+        logger.info("Model loaded!")
+
+
         # Load fine-tuned model and vocabulary
-        model = BertWSDArgs.from_pretrained(args.output_dir)
-        tokenizer = BertTokenizer.from_pretrained(args.output_dir)
+        if training_args.use_pos_tags and training_args.use_dependencies:
+            tokenizer = BertTokenizerArgs.from_pretrained(args.output_dir,
+                                                          training_args,
+                                                          pos_vocab_file=pos_vocab_path,
+                                                          dep_vocab_file=dep_vocab_path)
+        if training_args.use_pos_tags and not training_args.use_dependencies:
+            tokenizer = BertTokenizerArgs.from_pretrained(args.output_dir,
+                                                          training_args,
+                                                          pos_vocab_file=pos_vocab_path)
+        if not training_args.use_pos_tags and training_args.use_dependencies:
+            tokenizer = BertTokenizerArgs.from_pretrained(args.output_dir,
+                                                          training_args,
+                                                          dep_vocab_file=dep_vocab_path)
+        else:
+            tokenizer = BertTokenizer.from_pretrained(args.output_dir)
+
+        assert "[TGT]" in tokenizer.additional_special_tokens
+        logger.info(f"Vocab size in tokenizer: {len(tokenizer)}")
+        logger.info("Tokenizer loaded!\n")
+
+
+
+        #model = BertWSDArgs.from_pretrained(args.output_dir, training_args)
+
+
+
+
         model.to(args.device)
+
 
         eval_loss = evaluate(args, model, tokenizer)
         print(f"Evaluation loss: {eval_loss}")

@@ -216,6 +216,7 @@ python3 script/run_model_syntax.py \
     --logging_steps 1000 \
     --save_steps 1000 \
     --use_dependencies \
+    --use_pos_tags
 ```
 
 ```
@@ -255,11 +256,12 @@ arguments:
 ```
 Example:
 ```
-python3 script/run_model.py \
+python3 script/run_model_syntax.py \
     --do_eval \
     --eval_path "data/dev/semeval2007.csv" \
-    --model_name_or_path "model/bert_base-augmented-batch_size=64-lr=2e-5-max_gloss=4" \
-    --output_dir "model/bert_base-augmented-batch_size=64-lr=2e-5-max_gloss=4"
+    --model_name_or_path "model/bert-base-uncased-pos-dep-batch_size=8-lr=2e-05" \
+    --output_dir "model/bert-base-uncased-pos-dep-batch_size=8-lr=2e-05" \
+    --use_pos_tags
 ```
 
 ### Scoring
