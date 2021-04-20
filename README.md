@@ -109,9 +109,7 @@ python3 script/prepare_dataset_syntax.py \
     --corpus_dir "data/corpus/SemCor" \
     --output_dir "data/train" \
     --use_augmentation \
-    --use_pos \
-    --use_dependencies \
-    --use_dependencies \
+    --use_gloss_extensions \
     --cross_pos_train
 ```
 
@@ -204,21 +202,36 @@ python script/run_model.py \
 ```
 
 
-THE EXAMPLE TO USE
+THE EXAMPLES TO USE
 ```
 python3 script/run_model_syntax.py \
     --do_train \
     --train_path "data/train/small_train.csv" \
     --model_name_or_path "bert-base-uncased" \
-    --output_dir "model/bert_base-augmented-batch_size=128-lr=2e-5-max_gloss=6-pos" \
+    --output_dir "auto_create" \
     --per_gpu_train_batch_size 8 \
     --gradient_accumulation_steps 1 \
     --learning_rate 2e-5 \
     --num_train_epochs 2 \
     --logging_steps 1000 \
     --save_steps 1000 \
-    --use_pos \
-    --use_dep
+    --use_dependencies \
+```
+
+```
+python3 script/run_model_syntax.py \
+    --do_train \
+    --train_path "data/train/small_train-glosses_extended.csv" \
+    --model_name_or_path "bert-base-uncased" \
+    --output_dir "auto_create" \
+    --per_gpu_train_batch_size 8 \
+    --gradient_accumulation_steps 1 \
+    --learning_rate 2e-5 \
+    --num_train_epochs 2 \
+    --logging_steps 1000 \
+    --save_steps 1000 \
+    --use_pos_tags \
+    --use_gloss_extensions
 ```
 
 

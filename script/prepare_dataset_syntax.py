@@ -18,7 +18,6 @@ from xml.etree.ElementTree import ElementTree
 from tqdm import tqdm
 
 from utils.wordnet_syntax import get_example_sentences, get_glosses, get_all_wordnet_lemma_names, _get_gloss_extension
-from utils.dataset_syntax import get_pos_tokens
 
 
 TGT_TOKEN = '[TGT]'
@@ -58,15 +57,9 @@ def main():
     )
 
     parser.add_argument(
-        "--use_pos",
+        "--use_gloss_extensions",
         action='store_true',
-        help="Whether to add POS to the data."
-    )
-
-    parser.add_argument(
-        "--use_dependencies",
-        action='store_true',
-        help="Whether to add dependencies to the data."
+        help="Whether to add gloss extensions to the data."
     )
 
     parser.add_argument(
@@ -86,12 +79,10 @@ def main():
         output_filename += f"-max_num_gloss={args.max_num_gloss}"
     if args.use_augmentation:
         output_filename += "-augmented"
-    if args.use_pos:
-        output_filename += "-POS"
+    if args.use_gloss_extensions:
+        output_filename += "-glosses_extended"
     if args.cross_pos_train:
         output_filename += "-cross_pos"
-    if args.use_dependencies:
-        output_filename += "-DEP"
     csv_path = str(Path(args.output_dir).joinpath(f"{output_filename}.csv"))
 
     print("Creating data for gloss selection task...")
@@ -100,7 +91,7 @@ def main():
     max_gloss_count = 0
 
     # Make appropriate header based on args
-    if args.use_pos or args.use_dependencies:
+    if args.use_gloss_extensions:
         HEADERS = ['id', 'sentence', 'sense_keys', 'glosses', 'gloss_extensions', 'targets']
     else:
         HEADERS = ['id', 'sentence', 'sense_keys', 'glosses', 'targets']
@@ -153,7 +144,7 @@ def main():
 
             targets = [sense_keys.index(k) for k in _gold_keys]
 
-            if args.use_dependencies or args.use_pos:
+            if args.use_gloss_extensions:
                 gloss_extensions = [_get_gloss_extension(key, _lemma, conv_dict, args) for key in sense_keys]
                 csv_writer.writerow([_id, _sentence, list(sense_keys), list(glosses), gloss_extensions, targets])
             else:
@@ -195,7 +186,6 @@ def main():
                         )
 
                         _write_to_csv(id_, sentence, lemma, pos, gold_keys)
-
 
         if args.use_augmentation:
             print("Creating additional training data using example sentences from WordNet...")

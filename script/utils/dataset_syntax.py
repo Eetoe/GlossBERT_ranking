@@ -34,7 +34,7 @@ write_predictions(): used to write the model's predictions during evaluation to 
 
 def load_dataset(args, csv_path, tokenizer, max_sequence_length, spacy_model=None):
     # Change deserialization function depending
-    if args.use_gloss_extension:
+    if args.use_gloss_extensions:
         GlossSelectionRecord = namedtuple("GlossSelectionRecord",
                                           ["guid", "sentence", "sense_keys",
                                            "glosses", "gloss_extensions",
@@ -65,7 +65,15 @@ def _load_and_cache_dataset(args, csv_path, tokenizer, max_sequence_length, dese
     # Load data features from cache or dataset file
     data_dir = os.path.dirname(csv_path)
     dataset_name = os.path.basename(csv_path).split('.')[0]
-    cached_features_file = os.path.join(data_dir, f"cached_{dataset_name}_{max_sequence_length}")
+    if args.use_pos_tags and args.use_dependencies:
+        cached_features_file = os.path.join(data_dir, f"cached_{dataset_name}_{max_sequence_length}_pos_dep")
+    elif args.use_pos_tags and not args.use_dependencies:
+        cached_features_file = os.path.join(data_dir, f"cached_{dataset_name}_{max_sequence_length}_pos")
+    elif not args.use_pos_tags and args.use_dependencies:
+        cached_features_file = os.path.join(data_dir, f"cached_{dataset_name}_{max_sequence_length}_dep")
+    else:
+        cached_features_file = os.path.join(data_dir, f"cached_{dataset_name}_{max_sequence_length}")
+
     if os.path.exists(cached_features_file):
         print(f"Loading features from cached file {cached_features_file}")
         features = torch.load(cached_features_file)
@@ -137,7 +145,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
             - True (XLNet/GPT pattern): A + [SEP] + B + [SEP] + [CLS]
         `cls_token_segment_id` define the segment id associated to the CLS token (0 for BERT, 2 for XLNet)
     """
-    if args.use_pos or args.use_dependencies:
+    if args.use_pos_tags or args.use_dependencies:
         spacy_model = spacy_model
 
         if args.zero_syntax_for_special_tokens:
@@ -154,7 +162,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
             - Second take care of the case where it isn't
         
         """
-        if args.use_pos or args.use_dependencies:
+        if args.use_pos_tags or args.use_dependencies:
             """
                 - Analyze the sentence with and without [TGT] tokens using SpaCy
                 - Check if the two analyses are equal. If not, use the one without the [TGT] tokens
@@ -222,7 +230,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
         pairs = []
 
         # ====== Using gloss extension ======
-        if args.use_gloss_extension:
+        if args.use_gloss_extensions:
             # Get the gloss from the record; 1 if i is in the record targets or 0 if i is not in the record targets.
             # It only makes sense to use the gloss extension when POS is used, as dep is not guaranteed for any sense
             sequences = [(gloss, 1 if i in record.targets else 0, record.gloss_extensions[i])
@@ -279,7 +287,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                     if args.use_dependencies:
                         dep_tokens = bert_dep_tokens_a + ["[SEP_DEP]"] + target_dep
 
-                tokens += + target_word_tokens + tokens_b + [sep_token]
+                tokens += target_word_tokens + tokens_b + [sep_token]
                 # +1 to account for [SEP] token
                 segment_ids += [sequence_b_segment_id] * (len(tokens_b) + 1 + number_of_target_tokens)
                 if args.zero_syntax_for_special_tokens:
@@ -369,7 +377,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
             # Get the gloss from the record; 1 if i is in the record targets or 0 if i is not in the record targets.
             sequences = [(gloss, 1 if i in record.targets else 0) for i, gloss in enumerate(record.glosses)]
             # ====== When using syntax info =======
-            if args.use_pos or args.use_dependencies:
+            if args.use_pos_tags or args.use_dependencies:
                 for seq, label in sequences:  # seq is the gloss, label is either 0 or 1
                     # ====== Analyze sentence using spacy ======
                     spacy_doc = spacy_model(seq)
@@ -435,7 +443,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                     # When converting tokens to ids, it depends on whether the tokenizer has the syntax embedding.
                     # This depends on args. Therefore, if statements based on args are implemented from here on out.
                     input_ids = tokenizer.convert_tokens_to_ids(tokens)
-                    if args.use_pos:
+                    if args.use_pos_tags:
                         pos_ids = tokenizer.convert_syntax_tokens_to_ids(pos_tokens, "pos")
                     if args.use_dependencies:
                         dep_ids = tokenizer.convert_syntax_tokens_to_ids(dep_tokens, "dep")
@@ -450,7 +458,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                         input_ids = ([pad_token] * padding_length) + input_ids
                         input_mask = ([0 if mask_padding_with_zero else 1] * padding_length) + input_mask
                         segment_ids = ([pad_token_segment_id] * padding_length) + segment_ids
-                        if args.use_pos:
+                        if args.use_pos_tags:
                             pos_ids = ([pad_token] * padding_length) + pos_ids
                         if args.use_dependencies:
                             dep_ids = ([pad_token] * padding_length) + dep_ids
@@ -459,7 +467,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                                     ([pad_token] * padding_length)  # [pad_token] defined as 0, the [PAD] token's id
                         input_mask = input_mask + ([0 if mask_padding_with_zero else 1] * padding_length)
                         segment_ids = segment_ids + ([pad_token_segment_id] * padding_length)
-                        if args.use_pos:
+                        if args.use_pos_tags:
                             pos_ids = pos_ids + ([pad_token] * padding_length)
                         if args.use_dependencies:
                             dep_ids = dep_ids + ([pad_token] * padding_length)
@@ -467,24 +475,24 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                     assert len(input_ids) == max_seq_length
                     assert len(input_mask) == max_seq_length
                     assert len(segment_ids) == max_seq_length
-                    if args.use_pos:
+                    if args.use_pos_tags:
                         assert len(pos_ids) == max_seq_length
                     if args.use_dependencies:
                         assert len(dep_ids) == max_seq_length
 
                     # Append context-pair to the pairs list.
-                    if args.use_pos and args.use_dependencies:
+                    if args.use_pos_tags and args.use_dependencies:
                         pairs.append(
                             BertInputPosDep(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
                                             pos_ids=pos_ids, dep_ids=dep_ids,
                                             label_id=label)
                         )
-                    elif args.use_pos and not args.use_dependencies:
+                    elif args.use_pos_tags and not args.use_dependencies:
                         pairs.append(
                             BertInputPos(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
                                          pos_ids=pos_ids, label_id=label)
                         )
-                    elif not args.use_pos and args.use_dependencies:
+                    elif not args.use_pos_tags and args.use_dependencies:
                         pairs.append(
                             BertInputDep(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
                                          dep_ids=dep_ids, label_id=label)

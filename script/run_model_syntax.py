@@ -33,9 +33,9 @@ try:
 except ImportError:
     from tensorboardX import SummaryWriter
 
-from utils.dataset_syntax import load_dataset, write_predictions,\
-     collate_batch, collate_batch_pos_dep, collate_batch_pos, collate_batch_dep
-from utils.model_syntax import BERT_MODELS, BertWSD, get_model_and_tokenizer, forward_gloss_selection
+from utils.dataset_syntax import load_dataset, write_predictions, \
+    collate_batch, collate_batch_pos_dep, collate_batch_pos, collate_batch_dep
+from utils.model_syntax import BERT_MODELS, BertWSDArgs, get_model_and_tokenizer, forward_gloss_selection
 
 import spacy
 from spacy.symbols import ORTH
@@ -154,10 +154,11 @@ def train(args, model, tokenizer, train_dataloader, eval_during_training=False):
             if steps_trained_in_current_epoch > 0:
                 steps_trained_in_current_epoch -= 1
                 continue
-
+            logger.info("batch started")
             model.train()
+            logger.info("start forward gloss selection")
             loss = forward_gloss_selection(args, model, batch)[0]
-
+            #logger.info("forward gloss selection done")
             if args.n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
             if args.gradient_accumulation_steps > 1:
@@ -168,7 +169,7 @@ def train(args, model, tokenizer, train_dataloader, eval_during_training=False):
                     scaled_loss.backward()
             else:
                 loss.backward()
-
+            #logger.info("about to calculate training loss")
             tr_loss += loss.item()  # .item() is to get a number out of the tensor instead of the tensor itself.
             if (step + 1) % args.gradient_accumulation_steps == 0:
                 if args.fp16:
@@ -188,7 +189,7 @@ def train(args, model, tokenizer, train_dataloader, eval_during_training=False):
                         logs["eval_loss"] = evaluate(args, model, tokenizer, global_step)
 
                     loss_scalar = (
-                                              tr_loss - logging_loss) / args.logging_steps  # average loss of steps since last logging
+                                          tr_loss - logging_loss) / args.logging_steps  # average loss of steps since last logging
                     learning_rate_scalar = scheduler.get_lr()[0]
                     logs["learning_rate"] = learning_rate_scalar
                     logs["loss"] = loss_scalar
@@ -238,15 +239,15 @@ def evaluate(args, model, tokenizer, suffix=None):
 
     args.eval_batch_size = args.eval_batch_size
     eval_sampler = SequentialSampler(eval_dataset)
-    if args.use_pos and args.use_dependencies:
+    if args.use_pos_tags and args.use_dependencies:
         eval_dataloader = DataLoader(eval_dataset,
                                      sampler=eval_sampler, batch_size=args.eval_batch_size,
                                      collate_fn=collate_batch_pos_dep)
-    elif args.use_pos and not args.use_dependencies:
+    elif args.use_pos_tags and not args.use_dependencies:
         eval_dataloader = DataLoader(eval_dataset,
                                      sampler=eval_sampler, batch_size=args.eval_batch_size,
                                      collate_fn=collate_batch_pos)
-    elif not args.use_pos and args.use_dependencies:
+    elif not args.use_pos_tags and args.use_dependencies:
         eval_dataloader = DataLoader(eval_dataset,
                                      sampler=eval_sampler, batch_size=args.eval_batch_size,
                                      collate_fn=collate_batch_dep)
@@ -254,7 +255,6 @@ def evaluate(args, model, tokenizer, suffix=None):
         eval_dataloader = DataLoader(eval_dataset,
                                      sampler=eval_sampler, batch_size=args.eval_batch_size,
                                      collate_fn=collate_batch)
-
 
     # Eval
     logger.info("***** Running evaluation *****")
@@ -297,7 +297,8 @@ def main():
         default=None,
         type=str,
         required=True,
-        help="The output directory where the model predictions and checkpoints will be written.",
+        help="The output directory where the model predictions and checkpoints will be written."
+             " If auto_create, the scritp will automatically make a name based on the parameters.",
     )
 
     # Other parameters
@@ -470,7 +471,7 @@ def main():
     )
     # ====== ADD syntax args ======
     parser.add_argument(
-        "--use_pos",
+        "--use_pos_tags",
         action="store_true",
         help="Whether to use pos information in the model.",
     )
@@ -490,42 +491,62 @@ def main():
         help="Which spacy model to use. The base model is en_core_web_sm; the transformer model is en_core_web_trf."
     )
     parser.add_argument(
-        "--use_gloss_extension",
+        "--use_gloss_extensions",
         action="store_true",
         help="Whether to use gloss extension, i.e. adding the target word to the gloss. NB: only used along with POS.",
     )
     args = parser.parse_args()
 
     # ====== Make sure that the gloss extensions are only used when needed ======
-    if args.use_gloss_extension and not args.use_pos:
+    if args.use_gloss_extensions and not args.use_pos_tags:
         raise Exception("Gloss extensions are only used when POS information is also used.")
 
-    if args.use_gloss_extension:
+    if args.use_gloss_extensions:
         if args.train_path != "":
             tr_path = args.train_path
-            tr_path = re.search("-POS", tr_path)
+            tr_path = re.search("-glosses_extended", tr_path)
             if not tr_path:
                 raise ValueError("The data needs to contain the gloss extensions for them to be used.")
 
         if args.eval_path != "":
             ev_path = args.eval_path
-            ev_path = re.search("-POS", ev_path)
+            ev_path = re.search("-glosses_extended", ev_path)
             if not ev_path:
                 raise ValueError("The data needs to contain the gloss extensions for them to be used.")
     else:
         if args.train_path != "":
             tr_path = args.train_path
-            d_pos = re.search("-POS", tr_path)
-            d_dep = re.search("-DEP", tr_path)
-            if d_pos or d_dep:
+            tr_path = re.search("-glosses_extended", tr_path)
+            if tr_path:
                 raise ValueError("The data contains gloss extensions, which will cause formatting problems.")
 
         if args.eval_path != "":
             ev_path = args.eval_path
-            d_pos = re.search("-POS", ev_path)
-            d_dep = re.search("-DEP", ev_path)
-            if d_pos or d_dep:
+            ev_path = re.search("-glosses_extended", ev_path)
+            if ev_path:
                 raise ValueError("The data contains gloss extensions, which will cause formatting problems.")
+
+    # ====== Create output directory name ======
+    if args.output_dir == "auto_create":
+        if re.search("/", args.model_name_or_path):
+            auto_created_name = args.model_name_or_path.split("/")[-1]
+        else:
+            auto_created_name = args.model_name_or_path
+
+        if args.use_pos_tags:
+            auto_created_name += "-pos"
+        if args.use_dependencies:
+            auto_created_name += "-dep"
+        if args.use_gloss_extensions:
+            auto_created_name += "-glosses_extended"
+        if re.search("-augmented", args.train_path):
+            auto_created_name += "-augmented"
+        if re.search("max_num_gloss=(\d)+", args.train_path):
+            auto_created_name += re.search(r"-max_num_gloss=(\d)+", args.train_path)[0]
+        auto_created_name += "-batch_size=" + str(args.per_gpu_train_batch_size)
+        auto_created_name += "-lr=" + str(args.learning_rate)
+        auto_created_name = "model/"+auto_created_name
+        args.output_dir = auto_created_name
 
     # ====== Makes sure not to overwrite stuff in output dir unless you want to ======
     if (
@@ -581,8 +602,8 @@ def main():
     logger.info("Training/evaluation parameters %s", args)
 
     # ====== Set up spacy model ======
-    if args.use_pos or args.use_dependencies:
-        assert args.spacy_model in ["en_core_web_trf", "en_core_web_sm"],\
+    if args.use_pos_tags or args.use_dependencies:
+        assert args.spacy_model in ["en_core_web_trf", "en_core_web_sm"], \
             'The spacy model has to be either "en_core_web_trf" or "en_core_web_sm". '
         logger.info("Loading SpaCy model...\n")
         spacy_model = spacy.load(args.spacy_model)
@@ -591,7 +612,6 @@ def main():
         logger.info("SpaCy model loaded!\n")
     else:
         spacy_model = None
-
 
     # Set seed
     set_seed(args)
@@ -620,11 +640,11 @@ def main():
         logger.info("\nTraining...")
         train_dataset = load_dataset(args, args.train_path, tokenizer, args.max_seq_length, spacy_model)
         # Load the appropriate collate function depending on the use of pos and dep
-        if args.use_pos and args.use_dependencies:
+        if args.use_pos_tags and args.use_dependencies:
             train_dataloader = _get_dataloader(train_dataset, collate_batch_pos_dep)
-        elif args.use_pos and not args.use_dependencies:
+        elif args.use_pos_tags and not args.use_dependencies:
             train_dataloader = _get_dataloader(train_dataset, collate_batch_pos)
-        elif not args.use_pos and args.use_dependencies:
+        elif not args.use_pos_tags and args.use_dependencies:
             train_dataloader = _get_dataloader(train_dataset, collate_batch_dep)
         else:
             train_dataloader = _get_dataloader(train_dataset, collate_batch)
@@ -649,7 +669,7 @@ def main():
     # Evaluation
     if args.do_eval and args.local_rank in [-1, 0]:
         # Load fine-tuned model and vocabulary
-        model = BertWSD.from_pretrained(args.output_dir)
+        model = BertWSDArgs.from_pretrained(args.output_dir)
         tokenizer = BertTokenizer.from_pretrained(args.output_dir)
         model.to(args.device)
 

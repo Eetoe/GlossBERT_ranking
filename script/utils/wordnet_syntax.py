@@ -55,21 +55,10 @@ def _get_gloss_extension(key, _lemma, conversion_dict, args):
         pos = conversion_dict[pos]
         #print("alternative pos made")
     out_tuple = (_lemma,)
-    if args.use_pos:
-        out_tuple += (pos,)
-        #print("pos added to tuple")
-    if args.use_dependencies:
-        out_tuple += ("[NONE_DEP]",)
-        #print("dep added to tuple")
-    #print(out_tuple)
+    if args.use_gloss_extensions:
+        out_tuple += (pos, "[PAD]")
     return out_tuple
 
-def outer_fun(args):
-    _inner_fun(args)
-
-def _inner_fun(args):
-    print(args.use_pos)
-    print(args.use_dependencies)
 
 # For playing around with functions.
 if __name__ == '__main__':
@@ -83,7 +72,7 @@ if __name__ == '__main__':
     }
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--use_pos",
+        "--use_pos_tags",
         action='store_true',
         help="Whether to add POS to the data."
     )
@@ -96,7 +85,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    outer_fun(args)
     #print(wn.get_version())
 
     _lemma = "quick"
