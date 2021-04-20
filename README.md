@@ -218,11 +218,10 @@ python3 script/run_model_syntax.py \
     --use_dependencies \
     --use_pos_tags
 ```
-
 ```
 python3 script/run_model_syntax.py \
     --do_train \
-    --train_path "data/train/small_train-glosses_extended.csv" \
+    --train_path "data/train/small_train.csv" \
     --model_name_or_path "bert-base-uncased" \
     --output_dir "auto_create" \
     --per_gpu_train_batch_size 8 \
@@ -231,9 +230,11 @@ python3 script/run_model_syntax.py \
     --num_train_epochs 2 \
     --logging_steps 1000 \
     --save_steps 1000 \
+    --use_dependencies \
     --use_pos_tags \
     --use_gloss_extensions
 ```
+
 
 
 ## Evaluation

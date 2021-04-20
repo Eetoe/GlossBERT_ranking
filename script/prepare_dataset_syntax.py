@@ -17,7 +17,7 @@ from xml.etree.ElementTree import ElementTree
 
 from tqdm import tqdm
 
-from utils.wordnet_syntax import get_example_sentences, get_glosses, get_all_wordnet_lemma_names, _get_gloss_extension
+from utils.wordnet_syntax import get_example_sentences, get_glosses, get_all_wordnet_lemma_names
 
 
 TGT_TOKEN = '[TGT]'
@@ -57,15 +57,10 @@ def main():
     )
 
     parser.add_argument(
-        "--use_gloss_extensions",
-        action='store_true',
-        help="Whether to add gloss extensions to the data."
-    )
-
-    parser.add_argument(
         "--cross_pos_train",
         action='store_true',
-        help="Whether to have candidate senses of all pos"
+        help='Whether to have candidate senses of all pos. '
+             'NB: "bark" will have nouns and verbs but "barked" will only have verbs '
     )
 
     args = parser.parse_args()
@@ -79,8 +74,6 @@ def main():
         output_filename += f"-max_num_gloss={args.max_num_gloss}"
     if args.use_augmentation:
         output_filename += "-augmented"
-    if args.use_gloss_extensions:
-        output_filename += "-glosses_extended"
     if args.cross_pos_train:
         output_filename += "-cross_pos"
     csv_path = str(Path(args.output_dir).joinpath(f"{output_filename}.csv"))
@@ -90,22 +83,9 @@ def main():
     gloss_count = 0
     max_gloss_count = 0
 
-    # Make appropriate header based on args
-    if args.use_gloss_extensions:
-        HEADERS = ['id', 'sentence', 'sense_keys', 'glosses', 'gloss_extensions', 'targets']
-    else:
-        HEADERS = ['id', 'sentence', 'sense_keys', 'glosses', 'targets']
+    # Make header
+    HEADERS = ['id', 'sentence', 'sense_keys', 'glosses', 'targets']
 
-
-    # Make a dict to convert wn pos of synsets to the pos used elsewhere
-    conv_dict = {
-        "n": "[NOUN]",
-        "v": "[VERB]",
-        "a": "[ADJ]",
-        # Satellite adjective, adjective for my purposes
-        "s": "[ADJ]",
-        "r": "[ADV]"
-    }
 
     xml_root = ElementTree(file=xml_path).getroot()
     with open(csv_path, 'w', encoding='utf-8', newline='') as f:
@@ -144,12 +124,7 @@ def main():
 
             targets = [sense_keys.index(k) for k in _gold_keys]
 
-            if args.use_gloss_extensions:
-                gloss_extensions = [_get_gloss_extension(key, _lemma, conv_dict, args) for key in sense_keys]
-                csv_writer.writerow([_id, _sentence, list(sense_keys), list(glosses), gloss_extensions, targets])
-            else:
-                csv_writer.writerow([_id, _sentence, list(sense_keys), list(glosses), targets])
-
+            csv_writer.writerow([_id, _sentence, list(sense_keys), list(glosses), targets])
 
             record_count += 1
             gloss_count += len(glosses)

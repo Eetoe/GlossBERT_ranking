@@ -45,21 +45,6 @@ def get_all_wordnet_lemma_names():
     return results
 
 
-def _get_gloss_extension(key, _lemma, conversion_dict, args):
-    # synset = wn.synset_from_sense_key(key) # <-- This is flawed, use below code instead.
-    synset = wn.lemma_from_key(key).synset()
-
-    #print(synset)
-    #print(f"synset made for: {key}".format(key))
-    pos = str(synset.pos())
-    if conversion_dict != None:
-        pos = conversion_dict[pos]
-        #print("alternative pos made")
-    out_tuple = (_lemma,)
-    if args.use_gloss_extensions:
-        out_tuple += (pos, "[PAD]")
-    return out_tuple
-
 
 # For playing around with functions.
 if __name__ == '__main__':
@@ -89,9 +74,12 @@ if __name__ == '__main__':
     #print(wn.get_version())
 
     _lemma = "quick"
-#    info = _get_info(_lemma, None, 'gloss')
-#    [print(key, value) for key, value in info.items()]
-#    keys = list(info.keys())
+    _lemma = "break_dance"
+    info = _get_info(_lemma, None, 'gloss')
+    #[print(key, value) for key, value in info.items()]
+    keys = list(info.keys())
+    print(keys[0])
+    print(_get_gloss_extension(keys[0], conv_dict))
     #print(keys)
 #    extensions = [_get_gloss_extension(key, _lemma, conv_dict, args) for key in keys]
 #    print(extensions)
@@ -113,7 +101,7 @@ if __name__ == '__main__':
     adv_dict = get_glosses(_lemma, "ADV")
     sense_info = {**noun_dict, **verb_dict, **adj_dict, **adv_dict}
 
-    [print(key, value) for key, value in sense_info.items()]
+    #[print(key, value) for key, value in sense_info.items()]
 
 
     # print(wn.synset_from_sense_key(info.keys()[0]))

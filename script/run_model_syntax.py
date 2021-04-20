@@ -500,31 +500,6 @@ def main():
     if args.use_gloss_extensions and not args.use_pos_tags:
         raise Exception("Gloss extensions are only used when POS information is also used.")
 
-    if args.use_gloss_extensions:
-        if args.train_path != "":
-            tr_path = args.train_path
-            tr_path = re.search("-glosses_extended", tr_path)
-            if not tr_path:
-                raise ValueError("The data needs to contain the gloss extensions for them to be used.")
-
-        if args.eval_path != "":
-            ev_path = args.eval_path
-            ev_path = re.search("-glosses_extended", ev_path)
-            if not ev_path:
-                raise ValueError("The data needs to contain the gloss extensions for them to be used.")
-    else:
-        if args.train_path != "":
-            tr_path = args.train_path
-            tr_path = re.search("-glosses_extended", tr_path)
-            if tr_path:
-                raise ValueError("The data contains gloss extensions, which will cause formatting problems.")
-
-        if args.eval_path != "":
-            ev_path = args.eval_path
-            ev_path = re.search("-glosses_extended", ev_path)
-            if ev_path:
-                raise ValueError("The data contains gloss extensions, which will cause formatting problems.")
-
     # ====== Create output directory name ======
     if args.output_dir == "auto_create":
         if re.search("/", args.model_name_or_path):
@@ -536,6 +511,8 @@ def main():
             auto_created_name += "-pos"
         if args.use_dependencies:
             auto_created_name += "-dep"
+        if args.zero_syntax_for_special_tokens:
+            auto_created_name += "-no_syntax_for_special"
         if args.use_gloss_extensions:
             auto_created_name += "-glosses_extended"
         if re.search("-augmented", args.train_path):
