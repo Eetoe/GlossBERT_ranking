@@ -277,8 +277,8 @@ python3 script/run_model_syntax.py \
 python3 script/run_model_syntax.py \
     --do_eval \
     --eval_path "data/dev/semeval2007.csv" \
-    --model_name_or_path "model/bert-base-uncased-batch_size=8-lr=2e-05" \
-    --output_dir "model/bert-base-uncased-batch_size=8-lr=2e-05"
+    --model_name_or_path "model/bert-base-uncased-pos-dep-glosses_extended-batch_size=8-lr=2e-05" \
+    --output_dir "model/bert-base-uncased-pos-dep-glosses_extended-batch_size=8-lr=2e-05"
 ```
 
 ### Scoring
@@ -296,6 +296,11 @@ java Scorer data/corpus/semeval2007/semeval2007.gold.key.txt \
     model/bert-base-uncased-pos-dep-batch_size=8-lr=2e-05/semeval2007_predictions.txt
 ```
 
+PYTHON EXAMPLE
+```
+python3 scorer.py --gold_keys=data/corpus/semeval2007/semeval2007.gold.key.txt \
+    --predictions=model/bert-base-uncased-pos-dep-batch_size=8-lr=2e-05/semeval2007_predictions.txt
+```
 
 ## References
 - Raganato, Alessandro, Jose Camacho-Collados, and Roberto Navigli. "Word sense disambiguation: A unified evaluation framework and empirical comparison." Proceedings of the 15th Conference of the European Chapter of the Association for Computational Linguistics: Volume 1, Long Papers. 2017.
