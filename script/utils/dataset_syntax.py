@@ -277,13 +277,13 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                     gloss_ex_dep_tokens = [gloss_extension_tuple[2]]*num_gloss_ex
                     max_seq_len_with_gloss_ex = max_seq_length - num_gloss_ex - 3
                     _truncate_seq_pair(tokens_a, tokens_b, max_seq_length - 3)
-                    _truncate_seq_pair(bert_pos_tokens_a, bert_pos_tokens_b, max_seq_length - 3)
-                    _truncate_seq_pair(bert_dep_tokens_a, bert_dep_tokens_b, max_seq_length - 3)
+                    _truncate_seq_pair(bert_pos_tokens_a, bert_pos_tokens_b, max_seq_len_with_gloss_ex)
+                    _truncate_seq_pair(bert_dep_tokens_a, bert_dep_tokens_b, max_seq_len_with_gloss_ex)
 
                 else:
                     _truncate_seq_pair(tokens_a, tokens_b, max_seq_length - 3)
-                    _truncate_seq_pair(bert_pos_tokens_a, bert_pos_tokens_b, max_seq_len_with_gloss_ex)
-                    _truncate_seq_pair(bert_dep_tokens_a, bert_dep_tokens_b, max_seq_len_with_gloss_ex)
+                    _truncate_seq_pair(bert_pos_tokens_a, bert_pos_tokens_b, max_seq_length - 3)
+                    _truncate_seq_pair(bert_dep_tokens_a, bert_dep_tokens_b, max_seq_length - 3)
 
 
                 # ====== Merge the context and gloss tokens to form the context gloss pair ======
@@ -577,7 +577,7 @@ def collate_batch(batch):
 def write_predictions(output_dir, csv_path, predictions, suffix=None):
     # The following part(s) is modified
     def deserialize_csv_record(row):
-        return row[0], eval(row[3])
+        return row[0], eval(row[2])
 
     # The following part(s) is unmodified
     if not os.path.exists(output_dir):

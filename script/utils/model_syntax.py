@@ -1,14 +1,10 @@
-import math
-
 import torch
 import transformers
-from transformers import BertModel, BertConfig, BertPreTrainedModel, BertTokenizer, PreTrainedModel, PretrainedConfig, \
-    PreTrainedTokenizer, WordpieceTokenizer, BasicTokenizer
+from transformers import BertPreTrainedModel, PretrainedConfig, PreTrainedTokenizer, WordpieceTokenizer, BasicTokenizer
 from transformers.file_utils import add_code_sample_docstrings, add_start_docstrings_to_model_forward
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
-from transformers.models.bert.modeling_bert import BertEmbeddings, BertPooler, BertEncoder, BERT_INPUTS_DOCSTRING, \
-    _TOKENIZER_FOR_DOC, _CONFIG_FOR_DOC, load_tf_weights_in_bert
-from transformers.models.bert.configuration_bert import BertConfig
+from transformers.models.bert.modeling_bert import BertPooler, BertEncoder, BERT_INPUTS_DOCSTRING, \
+     _TOKENIZER_FOR_DOC, _CONFIG_FOR_DOC
 from torch import nn
 from typing import Optional, List, Tuple
 import os
@@ -538,7 +534,7 @@ class BertWSDArgs(BertPreTrainedModel):
 
         self.bert = BertModelArgs(config, args)
         # Add new embedding class to model!
-        self.embeddings = BertEmbeddingsArgs(config, args)
+        #self.embeddings = BertEmbeddingsArgs(config, args)
         self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
 
         self.ranking_linear = torch.nn.Linear(config.hidden_size, 1)

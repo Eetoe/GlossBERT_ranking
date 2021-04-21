@@ -232,21 +232,35 @@ def train(args, model, tokenizer, train_dataloader, eval_during_training=False):
     return global_step, tr_loss / global_step
 
 
-def evaluate(args, model, tokenizer, suffix=None):
+def evaluate(args, training_args, model, tokenizer, suffix=None):
     # Defined in
-    eval_dataset = load_dataset(args, args.eval_path, tokenizer, args.max_seq_length)
 
+
+    # ====== Set up spacy model ======
+    if training_args.use_pos_tags or training_args.use_dependencies:
+        assert args.spacy_model in ["en_core_web_trf", "en_core_web_sm"], \
+            'The spacy model has to be either "en_core_web_trf" or "en_core_web_sm". '
+        logger.info("Loading SpaCy model...")
+        spacy_model = spacy.load(args.spacy_model)
+        add_tgt = [{ORTH: "[TGT]"}]
+        spacy_model.tokenizer.add_special_case("[TGT]", add_tgt)
+        logger.info("SpaCy model loaded!\n")
+    else:
+        spacy_model = None
+
+    eval_dataset = load_dataset(training_args, args.eval_path, tokenizer, training_args.max_seq_length,
+                                spacy_model=spacy_model)
     args.eval_batch_size = args.eval_batch_size
     eval_sampler = SequentialSampler(eval_dataset)
-    if args.use_pos_tags and args.use_dependencies:
+    if training_args.use_pos_tags and training_args.use_dependencies:
         eval_dataloader = DataLoader(eval_dataset,
                                      sampler=eval_sampler, batch_size=args.eval_batch_size,
                                      collate_fn=collate_batch_pos_dep)
-    elif args.use_pos_tags and not args.use_dependencies:
+    elif training_args.use_pos_tags and not training_args.use_dependencies:
         eval_dataloader = DataLoader(eval_dataset,
                                      sampler=eval_sampler, batch_size=args.eval_batch_size,
                                      collate_fn=collate_batch_pos)
-    elif not args.use_pos_tags and args.use_dependencies:
+    elif not training_args.use_pos_tags and training_args.use_dependencies:
         eval_dataloader = DataLoader(eval_dataset,
                                      sampler=eval_sampler, batch_size=args.eval_batch_size,
                                      collate_fn=collate_batch_dep)
@@ -266,7 +280,7 @@ def evaluate(args, model, tokenizer, suffix=None):
     for batches in tqdm(eval_dataloader, desc="Evaluating"):
         model.eval()
         with torch.no_grad():
-            loss, logits_list = forward_gloss_selection(args, model, batches)
+            loss, logits_list = forward_gloss_selection(training_args, model, batches)
 
         eval_loss += loss
         # argmax with dimension returns the position of the highest value for the dimension for each unit in that dimension, e.g., rows or columns.
@@ -645,44 +659,26 @@ def main():
     # Evaluation
     if args.do_eval and args.local_rank in [-1, 0]:
         logger.info("\nStart evaluation!\n")
-        # Load training args
+        # ====== Load training args ======
         training_args = torch.load(args.model_name_or_path + "/training_args.bin")
 
-        # Get the training args needed to initialize model and tokenizer
+        # ====== Load fine-tuned model, its configguration and its tokenizer ======
+        # Load tokenizer
         if training_args.use_pos_tags:
             pos_vocab_path = training_args.output_dir + "/pos_vocab.txt"
         if training_args.use_dependencies:
             dep_vocab_path = training_args.output_dir + "/dep_vocab.txt"
 
-        config = BertConfigSyntax.from_pretrained(
-            args.model_name_or_path,
-            num_labels=2,
-            cache_dir=args.cache_dir if args.cache_dir else None
-        )
-        logger.info(f"Vocab size in config: {config.vocab_size}")
-        logger.info("Config loaded!\n")
-
-        model = BertWSDArgs.from_pretrained(
-            args.model_name_or_path,
-            args,
-            from_tf=bool('.ckpt' in args.model_name_or_path),
-            config=config,
-            cache_dir=args.cache_dir if args.cache_dir else None
-        )
-        logger.info("Model loaded!")
-
-
-        # Load fine-tuned model and vocabulary
         if training_args.use_pos_tags and training_args.use_dependencies:
             tokenizer = BertTokenizerArgs.from_pretrained(args.output_dir,
                                                           training_args,
                                                           pos_vocab_file=pos_vocab_path,
                                                           dep_vocab_file=dep_vocab_path)
-        if training_args.use_pos_tags and not training_args.use_dependencies:
+        elif training_args.use_pos_tags and not training_args.use_dependencies:
             tokenizer = BertTokenizerArgs.from_pretrained(args.output_dir,
                                                           training_args,
                                                           pos_vocab_file=pos_vocab_path)
-        if not training_args.use_pos_tags and training_args.use_dependencies:
+        elif not training_args.use_pos_tags and training_args.use_dependencies:
             tokenizer = BertTokenizerArgs.from_pretrained(args.output_dir,
                                                           training_args,
                                                           dep_vocab_file=dep_vocab_path)
@@ -691,19 +687,30 @@ def main():
 
         assert "[TGT]" in tokenizer.additional_special_tokens
         logger.info(f"Vocab size in tokenizer: {len(tokenizer)}")
-        logger.info("Tokenizer loaded!\n")
+        logger.info("Tokenizer loaded!")
 
+        # Load configuration
+        training_config = BertConfigSyntax.from_pretrained(
+            args.model_name_or_path,
+            num_labels=2,
+            cache_dir=args.cache_dir if args.cache_dir else None
+        )
+        logger.info(f"Vocab size in config: {training_config.vocab_size}")
+        logger.info("Config loaded!")
 
+        # Load model
+        model = BertWSDArgs.from_pretrained(
+            args.model_name_or_path,
+            training_args,
+            config=training_config
+        )
+        logger.info("Model loaded!")
 
-        #model = BertWSDArgs.from_pretrained(args.output_dir, training_args)
-
-
-
-
+        # ====== Send model to device and start evaluating ======
         model.to(args.device)
 
-
-        eval_loss = evaluate(args, model, tokenizer)
+        # Note that both args and training args are needed.
+        eval_loss = evaluate(args, training_args, model=model, tokenizer=tokenizer)
         print(f"Evaluation loss: {eval_loss}")
 
 

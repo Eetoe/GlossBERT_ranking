@@ -201,7 +201,6 @@ python script/run_model.py \
     --save_steps 1000
 ```
 
-
 THE EXAMPLES TO USE
 ```
 python3 script/run_model_syntax.py \
@@ -228,8 +227,8 @@ python3 script/run_model_syntax.py \
     --gradient_accumulation_steps 1 \
     --learning_rate 2e-5 \
     --num_train_epochs 2 \
-    --logging_steps 1000 \
-    --save_steps 1000 \
+    --logging_steps 7 \
+    --save_steps 7 \
     --use_dependencies \
     --use_pos_tags \
     --use_gloss_extensions
@@ -256,13 +255,30 @@ arguments:
                         checkpoints will be written.
 ```
 Example:
+
+```
+python3 script/run_model.py \
+    --do_eval \
+    --eval_path "data/dev/semeval2007.csv" \
+    --model_name_or_path "model/yap_et_al_model" \
+    --output_dir "model/yap_et_al_model"
+```
+
+EXAMPLES TO USE
 ```
 python3 script/run_model_syntax.py \
     --do_eval \
     --eval_path "data/dev/semeval2007.csv" \
     --model_name_or_path "model/bert-base-uncased-pos-dep-batch_size=8-lr=2e-05" \
-    --output_dir "model/bert-base-uncased-pos-dep-batch_size=8-lr=2e-05" \
-    --use_pos_tags
+    --output_dir "model/bert-base-uncased-pos-dep-batch_size=8-lr=2e-05"
+```
+
+```
+python3 script/run_model_syntax.py \
+    --do_eval \
+    --eval_path "data/dev/semeval2007.csv" \
+    --model_name_or_path "model/bert-base-uncased-batch_size=8-lr=2e-05" \
+    --output_dir "model/bert-base-uncased-batch_size=8-lr=2e-05"
 ```
 
 ### Scoring
@@ -277,7 +293,7 @@ arguments:
 Example:
 ```
 java Scorer data/corpus/semeval2007/semeval2007.gold.key.txt \
-    model/bert_base-augmented-batch_size=64-lr=2e-5-max_gloss=4/semeval2007_predictions.txt
+    model/bert-base-uncased-pos-dep-batch_size=8-lr=2e-05/semeval2007_predictions.txt
 ```
 
 
