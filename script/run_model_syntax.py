@@ -508,11 +508,15 @@ def main():
         action="store_true",
         help="Whether to use gloss extension, i.e. adding the target word to the gloss. NB: only used along with POS.",
     )
+    parser.add_argument(
+        "--gloss_extensions_w_tgt",
+        action="store_true",
+        help="Whether to add [TGT] tokens around the target word in the gloss extension.",
+    )
     args = parser.parse_args()
 
-    # ====== Make sure that the gloss extensions are only used when needed ======
-    if args.use_gloss_extensions and not args.use_pos_tags:
-        raise Exception("Gloss extensions are only used when POS information is also used.")
+    if not args.use_gloss_extensions and args.gloss_extensions_w_tgt:
+        raise ValueError("To add [TGT] tokens to the gloss extensions, please turn on gloss extensions first.")
 
     # ====== Create output directory name ======
     if args.output_dir == "auto_create":
@@ -529,6 +533,8 @@ def main():
             auto_created_name += "-no_syntax_for_special"
         if args.use_gloss_extensions:
             auto_created_name += "-glosses_extended"
+        if args.gloss_extensions_w_tgt:
+            auto_created_name += "_w_tgt"
         if re.search("-augmented", args.train_path):
             auto_created_name += "-augmented"
         if re.search("max_num_gloss=(\d)+", args.train_path):

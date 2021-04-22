@@ -108,8 +108,6 @@ Example with syntax augmentation:
 python3 script/prepare_dataset_syntax.py \
     --corpus_dir "data/corpus/SemCor" \
     --output_dir "data/train" \
-    --use_augmentation \
-    --use_gloss_extensions \
     --cross_pos_train
 ```
 
@@ -231,7 +229,8 @@ python3 script/run_model_syntax.py \
     --save_steps 7 \
     --use_dependencies \
     --use_pos_tags \
-    --use_gloss_extensions
+    --use_gloss_extensions \
+    --gloss_extensions_w_tgt
 ```
 
 

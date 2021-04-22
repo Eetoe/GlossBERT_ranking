@@ -1,16 +1,17 @@
+import collections
+import os
+from typing import Optional, List, Tuple
+
 import torch
 import transformers
+from torch import nn
 from transformers import BertPreTrainedModel, PretrainedConfig, PreTrainedTokenizer, WordpieceTokenizer, BasicTokenizer
 from transformers.file_utils import add_code_sample_docstrings, add_start_docstrings_to_model_forward
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 from transformers.models.bert.modeling_bert import BertPooler, BertEncoder, BERT_INPUTS_DOCSTRING, \
-     _TOKENIZER_FOR_DOC, _CONFIG_FOR_DOC
-from torch import nn
-from typing import Optional, List, Tuple
-import os
-import collections
-
-from transformers.models.bert.tokenization_bert import VOCAB_FILES_NAMES, PRETRAINED_VOCAB_FILES_MAP, PRETRAINED_INIT_CONFIGURATION, \
+    _TOKENIZER_FOR_DOC, _CONFIG_FOR_DOC
+from transformers.models.bert.tokenization_bert import VOCAB_FILES_NAMES, PRETRAINED_VOCAB_FILES_MAP, \
+    PRETRAINED_INIT_CONFIGURATION, \
     PRETRAINED_POSITIONAL_EMBEDDINGS_SIZES, load_vocab
 
 BERT_MODELS = (

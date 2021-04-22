@@ -2,12 +2,11 @@ import csv
 import os
 from collections import namedtuple
 
+import nltk
+import regex as re
 import torch
 from tqdm import tqdm
-import spacy
-import regex as re
 
-import nltk
 try:
     nltk.data.find('corpora/wordnet')
 except LookupError:
@@ -68,6 +67,8 @@ def _load_and_cache_dataset(args, csv_path, tokenizer, max_sequence_length, dese
         cached_features_file = cached_features_file + "-dep"
     if args.use_gloss_extensions:
         cached_features_file = cached_features_file + "-glosses_extended"
+    if args.gloss_extensions_w_tgt:
+        cached_features_file = cached_features_file + "_w_tgt"
     if args.zero_syntax_for_special_tokens:
         cached_features_file = cached_features_file + "-no_syntax_for_special"
 
@@ -242,13 +243,14 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
         # Make empty list for context-gloss pairs
         pairs = []
 
+        # Sequences to loop through
+        sequences = [(gloss, 1 if i in record.targets else 0, record.sense_keys[i]) for i,
+                                                                                        gloss in
+                     enumerate(record.glosses)]
 
         # ====== If using syntax tokens ======
         # Get the gloss from the record; 1 if i is in the record targets or 0 if i is not in the record targets.
         if args.use_pos_tags or args.use_dependencies:
-            # Sequences to loop through
-            sequences = [(gloss, 1 if i in record.targets else 0, record.sense_keys[i]) for i,
-                         gloss in enumerate(record.glosses)]
             # Loop through sequences
             for seq, label, key in sequences:  # seq is the gloss, label is either 0 or 1
                 # ====== Analyze sentence using spacy ======
@@ -276,6 +278,21 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                     gloss_ex_pos_tokens = [gloss_extension_tuple[1]]*num_gloss_ex
                     gloss_ex_dep_tokens = [gloss_extension_tuple[2]]*num_gloss_ex
                     max_seq_len_with_gloss_ex = max_seq_length - num_gloss_ex - 3
+
+                    if args.gloss_extensions_w_tgt:
+                        # add target tokens to gloss extension tokens, then add appropriate syntax tokens.
+                        gloss_ex_tokens.insert(0, "[TGT]")
+                        gloss_ex_tokens.append("[TGT]")
+
+                        gloss_ex_pos_tokens.insert(0, spacy_tgt_tpl[1])
+                        gloss_ex_pos_tokens.append(spacy_tgt_tpl[1])
+
+                        gloss_ex_dep_tokens.insert(0, spacy_tgt_tpl[2])
+                        gloss_ex_dep_tokens.append(spacy_tgt_tpl[2])
+
+                        max_seq_len_with_gloss_ex -= 2
+                        num_gloss_ex += 2
+
                     _truncate_seq_pair(tokens_a, tokens_b, max_seq_len_with_gloss_ex)
                     _truncate_seq_pair(bert_pos_tokens_a, bert_pos_tokens_b, max_seq_len_with_gloss_ex)
                     _truncate_seq_pair(bert_dep_tokens_a, bert_dep_tokens_b, max_seq_len_with_gloss_ex)
@@ -396,21 +413,43 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
 
         # ====== Without syntax tokens ======
         else:
-            sequences = [(gloss, 1 if i in record.targets else 0) for i, gloss in enumerate(record.glosses)]
-            for seq, label in sequences:  # seq is the gloss, label is either 0 or 1
+            for seq, label, key in sequences:  # seq is the gloss, label is either 0 or 1
                 tokens_b = tokenizer.tokenize(seq)
 
-                # Truncate sentence gloss pair so thy're less than the maximum input length
-                # -3 to make room for the [CLS] token and the 2 [SEP] tokens.
-                _truncate_seq_pair(tokens_a, tokens_b, max_seq_length - 3)
+                if args.use_gloss_extensions:
+                    gloss_extension_tuple = _get_gloss_extension(key, conv_dict)
+                    gloss_ex_tokens = tokenizer.tokenize(gloss_extension_tuple[0])
+                    num_gloss_ex = len(gloss_ex_tokens)
+                    max_seq_len_with_gloss_ex = max_seq_length - num_gloss_ex - 3
+
+                    if args.gloss_extensions_w_tgt:
+                        # add target tokens to gloss extension tokens, then add appropriate syntax tokens.
+                        gloss_ex_tokens.insert(0, "[TGT]")
+                        gloss_ex_tokens.append("[TGT]")
+
+                        max_seq_len_with_gloss_ex -= 2
+                        num_gloss_ex += 2
+
+                    _truncate_seq_pair(tokens_a, tokens_b, max_seq_len_with_gloss_ex)
+                else:
+                    # Truncate sentence gloss pair so thy're less than the maximum input length
+                    # -3 to make room for the [CLS] token and the 2 [SEP] tokens.
+                    _truncate_seq_pair(tokens_a, tokens_b, max_seq_length - 3)
 
                 # Start merging the context gloss pairs
                 # The segment ids are built gradually to keep track of what's context and what's glosses
+
                 tokens = tokens_a + [sep_token]
                 segment_ids = [sequence_a_segment_id] * len(tokens)
 
+                if args.use_gloss_extensions:
+                    tokens += gloss_ex_tokens
+
                 tokens += tokens_b + [sep_token]
-                segment_ids += [sequence_b_segment_id] * (len(tokens_b) + 1)
+                if args.use_gloss_extensions:
+                    segment_ids += [sequence_b_segment_id] * (len(tokens_b) + 1 + num_gloss_ex)
+                else:
+                    segment_ids += [sequence_b_segment_id] * (len(tokens_b) + 1)
 
                 if cls_token_at_end:
                     tokens = tokens + [cls_token]
@@ -448,6 +487,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
 
             features.append(pairs)
     print(features[0][0])
+    print(tokens)
     return features
 
 

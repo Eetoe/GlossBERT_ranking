@@ -14,11 +14,11 @@ import random
 import re
 from pathlib import Path
 from xml.etree.ElementTree import ElementTree
+import statistics
 
 from tqdm import tqdm
 
 from utils.wordnet_syntax import get_example_sentences, get_glosses, get_all_wordnet_lemma_names
-
 
 TGT_TOKEN = '[TGT]'
 special_token_pos = ['[NONE]']
@@ -82,6 +82,7 @@ def main():
     record_count = 0
     gloss_count = 0
     max_gloss_count = 0
+    gloss_per_record = []
 
     # Make header
     HEADERS = ['id', 'sentence', 'sense_keys', 'glosses', 'targets']
@@ -129,6 +130,7 @@ def main():
             record_count += 1
             gloss_count += len(glosses)
             max_gloss_count = max(max_gloss_count, len(glosses))
+            gloss_per_record.append(len(glosses))
 
         with open(txt_path, 'r', encoding='utf-8') as g:
             for doc in tqdm(xml_root):
@@ -184,6 +186,8 @@ def main():
         f"Done.\n"
         f"Number of records: {record_count}\n"
         f"Average number of glosses per record: {gloss_count / record_count:.2f}\n"
+        f"Median number of glosses per record: {statistics.median(gloss_per_record)}\n"
+        f"Mode of glosses per record: {statistics.mode(gloss_per_record)}\n"
         f"Maximum number of glosses in one record: {max_gloss_count}"
     )
 
