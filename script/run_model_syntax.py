@@ -233,9 +233,6 @@ def train(args, model, tokenizer, train_dataloader, eval_during_training=False):
 
 
 def evaluate(args, training_args, model, tokenizer, suffix=None):
-    # Defined in
-
-
     # ====== Set up spacy model ======
     if training_args.use_pos_tags or training_args.use_dependencies:
         assert args.spacy_model in ["en_core_web_trf", "en_core_web_sm"], \
@@ -283,7 +280,9 @@ def evaluate(args, training_args, model, tokenizer, suffix=None):
             loss, logits_list = forward_gloss_selection(training_args, model, batches)
 
         eval_loss += loss
-        # argmax with dimension returns the position of the highest value for the dimension for each unit in that dimension, e.g., rows or columns.
+
+        # argmax with dimension returns the position of the highest value for the dimension
+        # for each unit in that dimension, e.g., rows or columns.
         # dim = 0 is columns, 1 is rows, -1 might be the whole array.
         predictions.extend([torch.argmax(logits, dim=-1).item() for logits in logits_list])
         nb_eval_steps += 1

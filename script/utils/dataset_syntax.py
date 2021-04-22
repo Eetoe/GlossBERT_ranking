@@ -146,6 +146,7 @@ def _get_gloss_extension(key, conversion_dict):
     out_tuple = (lemma, pos, "[PAD]")
     return out_tuple
 
+
 # Creates features, i.e., the input given to BERT, to train on.
 def _create_features_from_records(args, spacy_model, records, max_seq_length, tokenizer, cls_token_at_end=False,
                                   pad_on_left=False,
@@ -613,7 +614,6 @@ def collate_batch(batch):
     return collated
 
 
-# Indexing changed to fit row with POS information
 def write_predictions(output_dir, csv_path, predictions, suffix=None):
     # The following part(s) is modified
     def deserialize_csv_record(row):

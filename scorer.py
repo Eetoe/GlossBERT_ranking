@@ -63,6 +63,7 @@ def _print(dataset_name, P, R, F1, prop_correct):
     print(f"Percentage of correct predictions:{' ' * (len(dataset_name)+9)}{round(prop_correct, 2)} %")
     print(f"{'=' * 50}{'=' * len(dataset_name)}\n")
 
+
 if __name__ == "__main__":
     # ====== Set up args ======
     parser = argparse.ArgumentParser()

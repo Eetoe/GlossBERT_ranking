@@ -47,26 +47,26 @@ class BertConfigSyntax(PretrainedConfig):
     model_type = "bert"
 
     def __init__(
-        self,
-        vocab_size=30522,
-        pos_vocab_size=24,
-        dep_vocab_size=51,
-        hidden_size=768,
-        num_hidden_layers=12,
-        num_attention_heads=12,
-        intermediate_size=3072,
-        hidden_act="gelu",
-        hidden_dropout_prob=0.1,
-        attention_probs_dropout_prob=0.1,
-        max_position_embeddings=512,
-        type_vocab_size=2,
-        initializer_range=0.02,
-        layer_norm_eps=1e-12,
-        pad_token_id=0,
-        gradient_checkpointing=False,
-        position_embedding_type="absolute",
-        use_cache=True,
-        **kwargs
+            self,
+            vocab_size=30522,
+            pos_vocab_size=24,
+            dep_vocab_size=51,
+            hidden_size=768,
+            num_hidden_layers=12,
+            num_attention_heads=12,
+            intermediate_size=3072,
+            hidden_act="gelu",
+            hidden_dropout_prob=0.1,
+            attention_probs_dropout_prob=0.1,
+            max_position_embeddings=512,
+            type_vocab_size=2,
+            initializer_range=0.02,
+            layer_norm_eps=1e-12,
+            pad_token_id=0,
+            gradient_checkpointing=False,
+            position_embedding_type="absolute",
+            use_cache=True,
+            **kwargs
     ):
         super().__init__(pad_token_id=pad_token_id, **kwargs)
 
@@ -107,22 +107,22 @@ class BertTokenizerArgs(PreTrainedTokenizer):
     max_model_input_sizes = PRETRAINED_POSITIONAL_EMBEDDINGS_SIZES
 
     def __init__(
-        self,
-        args,
-        vocab_file,
-        pos_vocab_file,
-        dep_vocab_file,
-        do_lower_case=True,
-        do_basic_tokenize=True,
-        never_split=None,
-        unk_token="[UNK]",
-        sep_token="[SEP]",
-        pad_token="[PAD]",
-        cls_token="[CLS]",
-        mask_token="[MASK]",
-        tokenize_chinese_chars=True,
-        strip_accents=None,
-        **kwargs
+            self,
+            args,
+            vocab_file,
+            pos_vocab_file,
+            dep_vocab_file,
+            do_lower_case=True,
+            do_basic_tokenize=True,
+            never_split=None,
+            unk_token="[UNK]",
+            sep_token="[SEP]",
+            pad_token="[PAD]",
+            cls_token="[CLS]",
+            mask_token="[MASK]",
+            tokenize_chinese_chars=True,
+            strip_accents=None,
+            **kwargs
     ):
         super().__init__(
             do_lower_case=do_lower_case,
@@ -219,7 +219,7 @@ class BertTokenizerArgs(PreTrainedTokenizer):
             return self.dep_vocab.get(token, self.dep_vocab.get(self.unk_token))
 
     def convert_syntax_ids_to_tokens(self, ids, syntax_type):
-        ids = [self. _convert_syntax_id_to_token(id, syntax_type) for id in ids]
+        ids = [self._convert_syntax_id_to_token(id, syntax_type) for id in ids]
         return ids
 
     def _convert_syntax_id_to_token(self, index, syntax_type):
@@ -237,7 +237,7 @@ class BertTokenizerArgs(PreTrainedTokenizer):
         return out_string
 
     def build_inputs_with_special_tokens(
-        self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
+            self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
     ) -> List[int]:
         if token_ids_1 is None:
             return [self.cls_token_id] + token_ids_0 + [self.sep_token_id]
@@ -246,7 +246,8 @@ class BertTokenizerArgs(PreTrainedTokenizer):
         return cls + token_ids_0 + sep + token_ids_1 + sep
 
     def get_special_tokens_mask(
-        self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None, already_has_special_tokens: bool = False
+            self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None,
+            already_has_special_tokens: bool = False
     ) -> List[int]:
         if already_has_special_tokens:
             if token_ids_1 is not None:
@@ -260,16 +261,14 @@ class BertTokenizerArgs(PreTrainedTokenizer):
             return [1] + ([0] * len(token_ids_0)) + [1] + ([0] * len(token_ids_1)) + [1]
         return [1] + ([0] * len(token_ids_0)) + [1]
 
-
     def create_token_type_ids_from_sequences(
-        self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
+            self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
     ) -> List[int]:
         sep = [self.sep_token_id]
         cls = [self.cls_token_id]
         if token_ids_1 is None:
             return len(cls + token_ids_0 + sep) * [0]
         return len(cls + token_ids_0 + sep) * [0] + len(token_ids_1 + sep) * [1]
-
 
     def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str] = None) -> Tuple[str]:
         index = 0
@@ -329,7 +328,8 @@ class BertEmbeddingsArgs(nn.Module):
         # position_ids (1, len position emb) is contiguous in memory and exported when serialized
         self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
 
-    def forward(self, input_ids=None, token_type_ids=None, position_ids=None, pos_ids=None, dep_ids=None, inputs_embeds=None):
+    def forward(self, input_ids=None, token_type_ids=None, position_ids=None, pos_ids=None, dep_ids=None,
+                inputs_embeds=None):
         """
         input_ids vs. inputs_embeds
             - input ids are ids for looking up embeddings in the embedding matrix
@@ -376,7 +376,7 @@ class BertEmbeddingsArgs(nn.Module):
 
         # ====== Add the embeddings together, normalize and perform dropout ======
         if self.args.use_pos_tags and self.args.use_dependencies:
-            embeddings = inputs_embeds + position_embeddings + token_type_embeddings +\
+            embeddings = inputs_embeds + position_embeddings + token_type_embeddings + \
                          token_pos_embeddings + token_dep_embeddings
         elif self.args.use_pos_tags and not self.args.use_dependencies:
             embeddings = inputs_embeds + position_embeddings + token_type_embeddings + token_pos_embeddings
@@ -387,6 +387,7 @@ class BertEmbeddingsArgs(nn.Module):
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
         return embeddings
+
 
 # ====== Make custom model class ======
 class BertModelArgs(BertPreTrainedModel):
@@ -446,20 +447,20 @@ class BertModelArgs(BertPreTrainedModel):
         config_class=_CONFIG_FOR_DOC,
     )
     def forward(
-        self,
-        input_ids=None,
-        attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        pos_ids=None,
-        dep_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-        output_attentions=None,
-        output_hidden_states=None,
-        return_dict=None,
+            self,
+            input_ids=None,
+            attention_mask=None,
+            token_type_ids=None,
+            position_ids=None,
+            pos_ids=None,
+            dep_ids=None,
+            head_mask=None,
+            inputs_embeds=None,
+            encoder_hidden_states=None,
+            encoder_attention_mask=None,
+            output_attentions=None,
+            output_hidden_states=None,
+            return_dict=None,
     ):
         # Output atention & hidden states set to use config values if values not provided directly
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -528,6 +529,7 @@ class BertModelArgs(BertPreTrainedModel):
             cross_attentions=encoder_outputs.cross_attentions,
         )
 
+
 # ====== Make custom model class, which goes on top of other custom model class ======
 class BertWSDArgs(BertPreTrainedModel):
     def __init__(self, config, args):
@@ -535,7 +537,7 @@ class BertWSDArgs(BertPreTrainedModel):
 
         self.bert = BertModelArgs(config, args)
         # Add new embedding class to model!
-        #self.embeddings = BertEmbeddingsArgs(config, args)
+        # self.embeddings = BertEmbeddingsArgs(config, args)
         self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
 
         self.ranking_linear = torch.nn.Linear(config.hidden_size, 1)
@@ -586,6 +588,7 @@ def get_model_and_tokenizer(args):
     model.to(args.device)
 
     return model, tokenizer
+
 
 def _create_syntax_vocab(args):
     path = args.output_dir
@@ -639,7 +642,6 @@ def _forward(args, model, batch):
     return model.dropout(outputs[1])
 
 
-
 def forward_gloss_selection(args, model, batches):
     batch_loss = 0
     logits_list = []
@@ -655,6 +657,3 @@ def forward_gloss_selection(args, model, batches):
     loss = batch_loss / len(batches)
 
     return loss, logits_list
-
-
-

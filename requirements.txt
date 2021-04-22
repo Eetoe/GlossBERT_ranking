@@ -1,9 +1,14 @@
--f https://download.pytorch.org/whl/torch_stable.html
-#nltk==3.4.5 # original version
-nltk==3.5 # newest version. From docu it doesn't seem to change anything relevant.
+nltk==3.5
 tensorboardX==1.9
-#torch==1.3.1 # Installed manually
-#torchvision==0.4.2 # Installed manually, along with torch-summary and tabulate. seemed to work.
-#transformers==2.3.0 # transformers in original code, however spacy requires higher version of transformers.
 tqdm==4.40.2
 #spacy==3.0.5
+torch~=1.7.1
+transformers~=4.2.2
+spacy~=3.0.5
+sklearn~=0.0
+scikit-learn~=0.24.1
+numpy~=1.19.5
+regex~=2020.11.13
+torchvision~=0.8.2
+torchsummary~=1.5.1
+tabulate~=0.8.7
