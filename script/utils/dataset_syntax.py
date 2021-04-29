@@ -61,6 +61,14 @@ def _load_and_cache_dataset(args, csv_path, tokenizer, max_sequence_length, dese
     data_dir = os.path.dirname(csv_path)
     dataset_name = os.path.basename(csv_path).split('.')[0]
     cached_features_file = os.path.join(data_dir, f"cached_{dataset_name}-{max_sequence_length}")
+    if re.search("bert-base", args.model_name_or_path):
+        cached_features_file = cached_features_file + "-bert-base"
+    if re.search("bert-large", args.model_name_or_path):
+        cached_features_file = cached_features_file + "-bert-large"
+    if re.search("-cased", args.model_name_or_path):
+        cached_features_file = cached_features_file + "-cased"
+    if re.search("-uncased", args.model_name_or_path):
+        cached_features_file = cached_features_file + "-uncased"
     if args.use_pos_tags:
         cached_features_file = cached_features_file + "-pos"
     if args.use_dependencies:

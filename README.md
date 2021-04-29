@@ -232,7 +232,23 @@ python3 script/run_model_syntax.py \
     --use_gloss_extensions \
     --gloss_extensions_w_tgt
 ```
-
+```
+python3 script/run_model_syntax.py \
+    --do_train \
+    --train_path "data/train/small_train.csv" \
+    --model_name_or_path "bert-large-uncased" \
+    --output_dir "auto_create" \
+    --per_gpu_train_batch_size 8 \
+    --gradient_accumulation_steps 1 \
+    --learning_rate 2e-5 \
+    --num_train_epochs 2 \
+    --logging_steps 7 \
+    --save_steps 7 \
+    --use_dependencies \
+    --use_pos_tags \
+    --use_gloss_extensions \
+    --gloss_extensions_w_tgt
+```
 
 
 ## Evaluation
@@ -276,8 +292,8 @@ python3 script/run_model_syntax.py \
 python3 script/run_model_syntax.py \
     --do_eval \
     --eval_path "data/dev/semeval2007.csv" \
-    --model_name_or_path "model/bert-base-uncased-pos-dep-glosses_extended-batch_size=8-lr=2e-05" \
-    --output_dir "model/bert-base-uncased-pos-dep-glosses_extended-batch_size=8-lr=2e-05"
+    --model_name_or_path "model/bert-base-uncased-pos-dep-glosses_extended_w_tgt-batch_size=8-lr=2e-05" \
+    --output_dir "model/bert-base-uncased-pos-dep-glosses_extended_w_tgt-batch_size=8-lr=2e-05"
 ```
 
 ### Scoring
