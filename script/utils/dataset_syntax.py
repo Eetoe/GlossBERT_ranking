@@ -495,7 +495,7 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                 )
 
             features.append(pairs)
-    print(features[0][0])
+    print(features[-1][0])
     print(tokens)
     return features
 

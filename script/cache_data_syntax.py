@@ -1,38 +1,34 @@
 import argparse
-import json
 import logging
 import os
 import random
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
-from torch.utils.data.distributed import DistributedSampler
-from tqdm import tqdm, trange
-from transformers import AdamW, BertTokenizer, get_linear_schedule_with_warmup
 
 try:
     from torch.utils.tensorboard import SummaryWriter
 except ImportError:
     from tensorboardX import SummaryWriter
 
-from utils.dataset_syntax import load_dataset, write_predictions, \
-    collate_batch, collate_batch_pos_dep, collate_batch_pos, collate_batch_dep
-from utils.model_syntax import BERT_MODELS, BertWSDArgs, get_model_and_tokenizer, forward_gloss_selection, \
-    BertTokenizerArgs, BertConfigSyntax
+from utils.dataset_syntax import load_dataset
+from utils.model_syntax import BERT_MODELS, get_model_and_tokenizer
 
 import spacy
 from spacy.symbols import ORTH
 import regex as re
+
 """
 Script modified from the run_model.py script.
-
 The reason to create this script was for caching the data, a process, which seemed slow on GPUs.
-Thus, it was deemed smarter to try to run the caching on CPUs.
+The caching seemed faster on local CPU, thus this script was made to do the caching before the training.
 
-
+Some of the names for the args are a legacy from the run_model.py script, as the utils function are
+tailor-made to take the args from run_model.py.
 """
+
 logger = logging.getLogger(__name__)
+
 
 def set_seed(args):
     random.seed(args.seed)
@@ -40,6 +36,7 @@ def set_seed(args):
     torch.manual_seed(args.seed)
     if args.n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -57,8 +54,7 @@ def main():
         default=None,
         type=str,
         required=True,
-        help="The output directory where the model predictions and checkpoints will be written."
-             " If auto_create, the script will automatically make a name based on the parameters.",
+        help="The output directory where the model will be loaded into. Deleted by the end of the script.",
     )
 
     # Other parameters
@@ -66,13 +62,7 @@ def main():
         "--train_path",
         default="",
         type=str,
-        help="Path to training dataset (.csv file).",
-    )
-    parser.add_argument(
-        "--eval_path",
-        default="",
-        type=str,
-        help="Path to evaluation dataset (.csv file).",
+        help="Path to the dataset to be cached (.csv file). Name is a legacy.",
     )
     parser.add_argument(
         "--cache_dir",
@@ -95,71 +85,10 @@ def main():
         help="Batch size per GPU/CPU for training."
     )
     parser.add_argument(
-        "--eval_batch_size",
-        default=8,
-        type=int,
-        help="Batch size per GPU/CPU for evaluation."
-    )
-    parser.add_argument(
-        "--gradient_accumulation_steps",
-        default=1,
-        type=int,
-        help="Number of updates steps to accumulate before performing a backward/update pass."
-    )
-    parser.add_argument(
         "--learning_rate",
         default=5e-5,
         type=float,
         help="The initial learning rate for Adam."
-    )
-    parser.add_argument(
-        "--weight_decay",
-        default=0.0,
-        type=float,
-        help="Weight decay if we apply some."
-    )
-    parser.add_argument(  # Epsilon is a very small parameter used to avoid division by 0
-        "--adam_epsilon",
-        default=1e-8,
-        type=float,
-        help="Epsilon for Adam optimizer."
-    )
-    parser.add_argument(
-        "--max_grad_norm",
-        default=1.0,
-        type=float,
-        help="Max gradient norm."
-    )
-    parser.add_argument(
-        "--num_train_epochs",
-        default=3,
-        type=int,
-        help="Total number of training epochs to perform."
-    )
-    parser.add_argument(
-        "--max_steps",
-        default=-1,
-        type=int,
-        help="If > 0: set total number of training steps to perform. Override num_train_epochs."
-    )
-    parser.add_argument(
-        "--warmup_steps",
-        default=0,
-        type=int,
-        help="Linear warmup over warmup_steps."
-    )
-
-    parser.add_argument(
-        "--logging_steps",
-        default=100,
-        type=int,
-        help="Log every X updates steps."
-    )
-    parser.add_argument(
-        "--save_steps",
-        default=2000,
-        type=int,
-        help="Save checkpoint every X updates steps."
     )
     parser.add_argument(
         "--no_cuda",
@@ -182,23 +111,6 @@ def main():
         type=int,
         help="random seed for initialization"
     )
-
-    parser.add_argument(
-        "--do_train",
-        action="store_true",
-        help="Whether to run training on train set."
-    )
-    parser.add_argument(
-        "--do_eval",
-        action="store_true",
-        help="Whether to run evaluation on dev/test set."
-    )
-    parser.add_argument(
-        "--evaluate_during_training",
-        action="store_true",
-        help="Run evaluation during training at each logging step."
-    )
-
     parser.add_argument(
         "--fp16",
         action="store_true",
@@ -217,18 +129,7 @@ def main():
         type=int,
         help="For distributed training: local_rank"
     )
-    parser.add_argument(
-        "--server_ip",
-        default="",
-        type=str,
-        help="For distant debugging."
-    )
-    parser.add_argument(
-        "--server_port",
-        default="",
-        type=str,
-        help="For distant debugging."
-    )
+
     # ====== ADD syntax args ======
     parser.add_argument(
         "--use_pos_tags",
@@ -295,7 +196,6 @@ def main():
     if (
             os.path.exists(args.output_dir)
             and os.listdir(args.output_dir)
-            and args.do_train
             and not args.overwrite_output_dir
     ):
         raise ValueError(
@@ -350,10 +250,23 @@ def main():
     # Set seed
     set_seed(args)
 
+    logger.info("Loading BERT model...\n")
     model, tokenizer = get_model_and_tokenizer(args)
+    logger.info("\n\nBERT model loaded!\n")
 
-    logger.info("\nStart caching dataset...")
+    # When loading the BERT model, a directory is created with it's pos and dep vocab
+    # This is a legacy from the run_model.py being made for also caching the data
+    # This directory is deleted here because if it isn't empty, the training will throw a warning
+    # The directroy will be created again during training
+    if len([name for name in os.listdir(args.output_dir) if os.path.isfile(name)]) < 3:
+        os.remove(args.output_dir+"/dep_vocab.txt")
+        os.remove(args.output_dir + "/pos_vocab.txt")
+        os.rmdir(args.output_dir)
+
+    logger.info("\n\nStart caching dataset...")
     train_dataset = load_dataset(args, args.train_path, tokenizer, args.max_seq_length, spacy_model)
+    logger.info("\n\nDataset cached!")
+
 
 if __name__ == "__main__":
     main()
