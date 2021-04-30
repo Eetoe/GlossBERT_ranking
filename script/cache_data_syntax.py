@@ -24,7 +24,14 @@ from utils.model_syntax import BERT_MODELS, BertWSDArgs, get_model_and_tokenizer
 import spacy
 from spacy.symbols import ORTH
 import regex as re
+"""
+Script modified from the run_model.py script.
 
+The reason to create this script was for caching the data, a process, which seemed slow on GPUs.
+Thus, it was deemed smarter to try to run the caching on CPUs.
+
+
+"""
 logger = logging.getLogger(__name__)
 
 def set_seed(args):
@@ -299,16 +306,7 @@ def main():
     elif not os.path.exists(args.output_dir) and args.local_rank in [-1, 0]:  # Make output dir if it doesn't exist
         os.makedirs(args.output_dir)
 
-    # ====== Setup distant debugging if needed ======
-    if args.server_ip and args.server_port:
-        # Distant debugging - see https://code.visualstudio.com/docs/python/debugging#_attach-to-a-local-script
-        import ptvsd
-
-        print("Waiting for debugger attach")
-        ptvsd.enable_attach(address=(args.server_ip, args.server_port), redirect_output=True)
-        ptvsd.wait_for_attach()
-
-    # Setup CUDA, GPU & distributed training
+    # ====== Setup CUDA, GPU & distributed training ======
     if args.local_rank == -1 or args.no_cuda:
         # Use cuda if available and no_cuda is False, else use cpu
         device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
@@ -335,7 +333,7 @@ def main():
         bool(args.local_rank != -1),
         args.fp16,
     )
-    logger.info("Training/evaluation parameters %s", args)
+    logger.info("Caching parameters %s", args)
 
     # ====== Set up spacy model ======
     if args.use_pos_tags or args.use_dependencies:
@@ -354,30 +352,8 @@ def main():
 
     model, tokenizer = get_model_and_tokenizer(args)
 
-    # Calculate batch size for data loader
-    batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
-
-    def _get_dataloader(_train_dataset, _collate_fn):
-        # \ by itself joins two lines together using the logic of the first line
-        train_sampler = RandomSampler(_train_dataset) if args.local_rank == -1 \
-            else DistributedSampler(_train_dataset)
-
-        return DataLoader(
-            _train_dataset,
-            sampler=train_sampler,
-            batch_size=batch_size,
-            collate_fn=_collate_fn
-        )
-
-    # fine-tune on gloss selection task
-    logger.info("\nTraining...")
+    logger.info("\nStart caching dataset...")
     train_dataset = load_dataset(args, args.train_path, tokenizer, args.max_seq_length, spacy_model)
-    # Load the appropriate collate function depending on the use of pos and dep
-    if args.use_pos_tags and args.use_dependencies:
-        train_dataloader = _get_dataloader(train_dataset, collate_batch_pos_dep)
-    elif args.use_pos_tags and not args.use_dependencies:
-        train_dataloader = _get_dataloader(train_dataset, collate_batch_pos)
-    elif not args.use_pos_tags and args.use_dependencies:
-        train_dataloader = _get_dataloader(train_dataset, collate_batch_dep)
-    else:
-        train_dataloader = _get_dataloader(train_dataset, collate_batch)
+
+if __name__ == "__main__":
+    main()
