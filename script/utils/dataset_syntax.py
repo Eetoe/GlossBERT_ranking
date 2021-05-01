@@ -69,6 +69,8 @@ def _load_and_cache_dataset(args, csv_path, tokenizer, max_sequence_length, dese
         cached_features_file = cached_features_file + "-cased"
     if re.search("-uncased", args.model_name_or_path):
         cached_features_file = cached_features_file + "-uncased"
+    if re.search("-whole-word-masking", args.model_name_or_path):
+        cached_features_file = cached_features_file + "-wh_w_m"
     if args.use_pos_tags:
         cached_features_file = cached_features_file + "-pos"
     if args.use_dependencies:
