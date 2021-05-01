@@ -11,7 +11,7 @@ try:
 except ImportError:
     from tensorboardX import SummaryWriter
 
-from utils.dataset_syntax import load_dataset
+from utils.cache_syntax import load_dataset
 from utils.model_syntax import BERT_MODELS, get_model_and_tokenizer
 
 import spacy
@@ -49,13 +49,14 @@ def main():
         required=True,
         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(BERT_MODELS),
     )
-    parser.add_argument(
-        "--output_dir",
-        default=None,
-        type=str,
-        required=True,
-        help="The output directory where the model will be loaded into. Deleted by the end of the script.",
-    )
+    # Simply set in script, will be deleted anyway.
+    #parser.add_argument(
+    #    "--output_dir",
+    #    default=None,
+    #    type=str,
+    #    required=True,
+    #    help="The output directory where the model will be loaded into. Deleted by the end of the script.",
+    #)
 
     # Other parameters
     parser.add_argument(
@@ -132,65 +133,33 @@ def main():
 
     # ====== ADD syntax args ======
     parser.add_argument(
-        "--use_pos_tags",
-        action="store_true",
-        help="Whether to use pos information in the model.",
+        "--to_cache_with_gloss_extensions",
+        default="",
+        help="Which combination of syntax tokens to cache with gloss extensions."
+             " pos for POS only; dep for grammatical dependencies only; pd for both; '' for no cached data.."
     )
     parser.add_argument(
-        "--use_dependencies",
-        action="store_true",
-        help="Whether to use grammatical dependency information in the model.",
-    )
-    parser.add_argument(
-        "--zero_syntax_for_special_tokens",
-        action="store_true",
-        help="Whether to multiply the pos and dep tensors with 0 for [CLS], [SEP] and [TGT] tokens.",
+        "--to_cache_wo_gloss_extensions",
+        default="",
+        help="Which combination of syntax tokens to cache without gloss extensions."
+             "pos for POS only; dep for grammatical dependencies only; pd for both; '' for no cached data."
     )
     parser.add_argument(
         "--spacy_model",
         default="en_core_web_trf",
         help="Which spacy model to use. The base model is en_core_web_sm; the transformer model is en_core_web_trf."
     )
-    parser.add_argument(
-        "--use_gloss_extensions",
-        action="store_true",
-        help="Whether to use gloss extension, i.e. adding the target word to the gloss. NB: only used along with POS.",
-    )
-    parser.add_argument(
-        "--gloss_extensions_w_tgt",
-        action="store_true",
-        help="Whether to add [TGT] tokens around the target word in the gloss extension.",
-    )
-    args = parser.parse_args()
 
-    if not args.use_gloss_extensions and args.gloss_extensions_w_tgt:
-        raise ValueError("To add [TGT] tokens to the gloss extensions, please turn on gloss extensions first.")
+    args = parser.parse_args()
+    args.use_pos_tags = True
+    args.use_dependencies = True
+
+    if args.to_cache_with_gloss_extensions == "" and args.to_cache_wo_gloss_extensions == "":
+        raise ValueError('Nothing to cache!'
+                         'Add values to "to_cache_with_gloss_extensions" or "to_cache_wo_gloss_extensions".')
 
     # ====== Create output directory name ======
-    if args.output_dir == "auto_create":
-        if re.search("/", args.model_name_or_path):
-            auto_created_name = args.model_name_or_path.split("/")[-1]
-        else:
-            auto_created_name = args.model_name_or_path
-
-        if args.use_pos_tags:
-            auto_created_name += "-pos"
-        if args.use_dependencies:
-            auto_created_name += "-dep"
-        if args.zero_syntax_for_special_tokens:
-            auto_created_name += "-no_syntax_for_special"
-        if args.use_gloss_extensions:
-            auto_created_name += "-glosses_extended"
-        if args.gloss_extensions_w_tgt:
-            auto_created_name += "_w_tgt"
-        if re.search("-augmented", args.train_path):
-            auto_created_name += "-augmented"
-        if re.search("max_num_gloss=(\d)+", args.train_path):
-            auto_created_name += re.search(r"-max_num_gloss=(\d)+", args.train_path)[0]
-        auto_created_name += "-batch_size=" + str(args.per_gpu_train_batch_size)
-        auto_created_name += "-lr=" + str(args.learning_rate)
-        auto_created_name = "model/"+auto_created_name
-        args.output_dir = auto_created_name
+    args.output_dir = "model/temporary_dir_for_caching"
 
     # ====== Makes sure not to overwrite stuff in output dir unless you want to ======
     if (
@@ -258,14 +227,13 @@ def main():
     # This is a legacy from the run_model.py being made for also caching the data
     # This directory is deleted here because if it isn't empty, the training will throw a warning
     # The directroy will be created again during training
-    if len([name for name in os.listdir(args.output_dir) if os.path.isfile(name)]) < 3:
-        os.remove(args.output_dir+"/dep_vocab.txt")
-        os.remove(args.output_dir + "/pos_vocab.txt")
-        os.rmdir(args.output_dir)
+    os.remove(args.output_dir+"/dep_vocab.txt")
+    os.remove(args.output_dir + "/pos_vocab.txt")
+    os.rmdir(args.output_dir)
 
-    logger.info("\n\nStart caching dataset...")
+    logger.info("Start caching dataset...\n\n")
     train_dataset = load_dataset(args, args.train_path, tokenizer, args.max_seq_length, spacy_model)
-    logger.info("\n\nDataset cached!")
+    logger.info("Dataset cached!")
 
 
 if __name__ == "__main__":
