@@ -472,16 +472,16 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
 
     w_ge = [ft for ft in [features_pd_ge, features_p_ge, features_d_ge] if len(ft[0]) > 0]
     if len(w_ge) > 0:
-        print(w_ge[0])
-        print(tokens_ge)
-        print(pos_tokens_ge)
-        print(dep_tokens_ge)
+        print(w_ge[0], "\n")
+        print(tokens_ge, "\n")
+        print(pos_tokens_ge, "\n")
+        print(dep_tokens_ge, "\n")
     else:
         wo_ge = [ft for ft in [features_pd, features_p, features_d] if len(ft[0]) > 0]
-        print(wo_ge[0])
-        print(tokens)
-        print(pos_tokens)
-        print(dep_tokens)
+        print("\n", wo_ge[0], "\n")
+        print(tokens, "\n")
+        print(pos_tokens, "\n")
+        print(dep_tokens, "\n")
 
 
     return features_pd, features_p, features_d, features_pd_ge, features_p_ge, features_d_ge

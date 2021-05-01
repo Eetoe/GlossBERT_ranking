@@ -195,14 +195,14 @@ def main():
         level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN,  # WARN is a deprecated version of warning
     )
     logger.warning(
-        "Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s",
+        "Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s\n",
         args.local_rank,
         device,
         args.n_gpu,
         bool(args.local_rank != -1),
         args.fp16,
     )
-    logger.info("Caching parameters %s", args)
+    logger.info("Caching parameters %s \n", args)
 
     # ====== Set up spacy model ======
     if args.use_pos_tags or args.use_dependencies:
@@ -221,7 +221,7 @@ def main():
 
     logger.info("Loading BERT model...\n")
     model, tokenizer = get_model_and_tokenizer(args)
-    logger.info("\n\nBERT model loaded!\n")
+    logger.info("BERT model loaded!\n")
 
     # When loading the BERT model, a directory is created with it's pos and dep vocab
     # This is a legacy from the run_model.py being made for also caching the data
@@ -231,7 +231,7 @@ def main():
     os.remove(args.output_dir + "/pos_vocab.txt")
     os.rmdir(args.output_dir)
 
-    logger.info("Start caching dataset...\n\n")
+    logger.info("Start caching dataset...\n")
     train_dataset = load_dataset(args, args.train_path, tokenizer, args.max_seq_length, spacy_model)
     logger.info("Dataset cached!")
 
