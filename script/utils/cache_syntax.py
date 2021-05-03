@@ -51,6 +51,7 @@ def load_dataset(args, csv_path, tokenizer, max_sequence_length, spacy_model=Non
 
 def _load_and_cache_dataset(args, csv_path, tokenizer, max_sequence_length, deserialze_fn, spacy_model):
     # ====== Create file names for cached data ======
+    # First create the common elements in all file names
     data_dir = os.path.dirname(csv_path)
     dataset_name = os.path.basename(csv_path).split('.')[0]
     cached_features_file = os.path.join(data_dir, f"cached_{dataset_name}-{max_sequence_length}")
@@ -65,7 +66,7 @@ def _load_and_cache_dataset(args, csv_path, tokenizer, max_sequence_length, dese
     if re.search("-whole-word-masking", args.model_name_or_path):
         cached_features_file = cached_features_file + "-wh_w_m"
 
-
+    # file names now start to divege:
     cached_features_file_pd_ge = cached_features_file + "-pos"
     cached_features_file_pd_ge = cached_features_file_pd_ge + "-dep"
     cached_features_file_pd_ge = cached_features_file_pd_ge + "-glosses_extended_w_tgt-no_syntax_for_special"
@@ -463,25 +464,36 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                                      dep_ids=dep_ids_ge, label_id=label)
                     )
 
-    features_pd.append(pairs_pd)
-    features_p.append(pairs_p)
-    features_d.append(pairs_d)
-    features_pd_ge.append(pairs_pd_ge)
-    features_p_ge.append(pairs_p_ge)
-    features_d_ge.append(pairs_d_ge)
+            features_pd.append(pairs_pd)
+            features_p.append(pairs_p)
+            features_d.append(pairs_d)
+            features_pd_ge.append(pairs_pd_ge)
+            features_p_ge.append(pairs_p_ge)
+            features_d_ge.append(pairs_d_ge)
 
-    w_ge = [ft for ft in [features_pd_ge, features_p_ge, features_d_ge] if len(ft[0]) > 0]
+    # ====== Print info on the cached data ======
+    # Length of pairs
+    print("\nNumber of context-gloss pairs for the cached data:")
+    if args.to_cache_with_gloss_extensions != "":
+        w_ge = [len(ft) for ft in [features_pd_ge, features_p_ge, features_d_ge] if ft != []]
+        print("Number of context gloss pairs:", w_ge[0], "\n")
+    else:
+        wo_ge = [len(ft) for ft in [features_pd, features_p, features_d] if ft != []]
+        print("Number of context gloss pairs:", wo_ge[0], "\n")
+
+    # Example of cached data
+    print("Example of the input for BERT:")
+    w_ge = [ft[-1][0] for ft in [features_pd_ge, features_p_ge, features_d_ge] if len(ft[-1]) > 0]
     if len(w_ge) > 0:
         print(w_ge[0], "\n")
         print(tokens_ge, "\n")
         print(pos_tokens_ge, "\n")
         print(dep_tokens_ge, "\n")
     else:
-        wo_ge = [ft for ft in [features_pd, features_p, features_d] if len(ft[0]) > 0]
-        print("\n", wo_ge[0], "\n")
+        wo_ge = [ft[-1][0] for ft in [features_pd, features_p, features_d] if len(ft[-1]) > 0]
+        print("\n", wo_ge, "\n")
         print(tokens, "\n")
         print(pos_tokens, "\n")
         print(dep_tokens, "\n")
-
 
     return features_pd, features_p, features_d, features_pd_ge, features_p_ge, features_d_ge
