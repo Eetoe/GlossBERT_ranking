@@ -7,6 +7,7 @@ import regex as re
 import torch
 from tqdm import tqdm
 
+
 try:
     nltk.data.find('corpora/wordnet')
 except LookupError:
@@ -464,16 +465,16 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                                      dep_ids=dep_ids_ge, label_id=label)
                     )
 
-            features_pd.append(pairs_pd)
-            features_p.append(pairs_p)
-            features_d.append(pairs_d)
-            features_pd_ge.append(pairs_pd_ge)
-            features_p_ge.append(pairs_p_ge)
-            features_d_ge.append(pairs_d_ge)
+        features_pd.append(pairs_pd)
+        features_p.append(pairs_p)
+        features_d.append(pairs_d)
+        features_pd_ge.append(pairs_pd_ge)
+        features_p_ge.append(pairs_p_ge)
+        features_d_ge.append(pairs_d_ge)
 
     # ====== Print info on the cached data ======
     # Length of pairs
-    print("\nNumber of context-gloss pairs for the cached data:")
+    print("\nNumber of records for the cached data:")
     if args.to_cache_with_gloss_extensions != "":
         w_ge = [len(ft) for ft in [features_pd_ge, features_p_ge, features_d_ge] if ft != []]
         print("Number of context gloss pairs:", w_ge[0], "\n")
@@ -497,3 +498,9 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
         print(dep_tokens, "\n")
 
     return features_pd, features_p, features_d, features_pd_ge, features_p_ge, features_d_ge
+
+
+def load_cached_dataset(path):
+    print(f"Loading features from cached file {path}")
+    features = torch.load(path)
+    return features

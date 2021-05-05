@@ -497,6 +497,8 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                 )
 
             features.append(pairs)
+    print("\nNumber of records for the cached data:")
+    print(len(features))
     print(features[-1][0])
     print(tokens)
     return features
