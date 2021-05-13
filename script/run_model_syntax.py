@@ -245,6 +245,9 @@ def evaluate(args, training_args, model, tokenizer, suffix=None):
     else:
         spacy_model = None
 
+    # Make sure the device is the local device.
+    training_args.device = args.device
+
     eval_dataset = load_dataset(training_args, args.eval_path, tokenizer, training_args.max_seq_length,
                                 spacy_model=spacy_model)
     args.eval_batch_size = args.eval_batch_size
