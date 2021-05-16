@@ -110,8 +110,8 @@ class BertTokenizerArgs(PreTrainedTokenizer):
             self,
             args,
             vocab_file,
-            pos_vocab_file,
-            dep_vocab_file,
+            pos_vocab_file="",
+            dep_vocab_file="",
             do_lower_case=True,
             do_basic_tokenize=True,
             never_split=None,
@@ -559,14 +559,31 @@ def get_model_and_tokenizer(args):
         num_labels=2,
         cache_dir=args.cache_dir if args.cache_dir else None
     )
-    tokenizer = BertTokenizerArgs.from_pretrained(
-        args.model_name_or_path,
-        args,
-        pos_vocab_file=pos_vocab_file,
-        dep_vocab_file=dep_vocab_file,
-        do_lower_case=bool('uncased' in args.model_name_or_path),
-        cache_dir=args.cache_dir if args.cache_dir else None
-    )
+    if args.use_pos_tags and args.use_dependencies:
+        tokenizer = BertTokenizerArgs.from_pretrained(
+            args.model_name_or_path,
+            args,
+            pos_vocab_file=pos_vocab_file,
+            dep_vocab_file=dep_vocab_file,
+            do_lower_case=bool('uncased' in args.model_name_or_path),
+            cache_dir=args.cache_dir if args.cache_dir else None
+        )
+    if args.use_pos_tags and not args.use_dependencies:
+        tokenizer = BertTokenizerArgs.from_pretrained(
+            args.model_name_or_path,
+            args,
+            pos_vocab_file=pos_vocab_file,
+            do_lower_case=bool('uncased' in args.model_name_or_path),
+            cache_dir=args.cache_dir if args.cache_dir else None
+        )
+    if args.use_dependencies and not args.use_pos_tags:
+        tokenizer = BertTokenizerArgs.from_pretrained(
+            args.model_name_or_path,
+            args,
+            dep_vocab_file=dep_vocab_file,
+            do_lower_case=bool('uncased' in args.model_name_or_path),
+            cache_dir=args.cache_dir if args.cache_dir else None
+        )
     model = BertWSDArgs.from_pretrained(
         args.model_name_or_path,
         args,
