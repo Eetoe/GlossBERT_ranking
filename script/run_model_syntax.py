@@ -670,7 +670,10 @@ def main():
         # ====== Load training args ======
         training_args = torch.load(args.model_name_or_path + "/training_args.bin")
 
-        # ====== Load fine-tuned model, its configguration and its tokenizer ======
+        training_args.model_name_or_path = args.model_name_or_path
+        training_args.output_dir = args.output_dir
+
+        # ====== Load fine-tuned model, its configuration and its tokenizer ======
         # Load tokenizer
         if training_args.use_pos_tags:
             pos_vocab_path = training_args.output_dir + "/pos_vocab.txt"
