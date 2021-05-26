@@ -568,7 +568,7 @@ def get_model_and_tokenizer(args):
             do_lower_case=bool('uncased' in args.model_name_or_path),
             cache_dir=args.cache_dir if args.cache_dir else None
         )
-    if args.use_pos_tags and not args.use_dependencies:
+    elif args.use_pos_tags and not args.use_dependencies:
         tokenizer = BertTokenizerArgs.from_pretrained(
             args.model_name_or_path,
             args,
@@ -576,11 +576,18 @@ def get_model_and_tokenizer(args):
             do_lower_case=bool('uncased' in args.model_name_or_path),
             cache_dir=args.cache_dir if args.cache_dir else None
         )
-    if args.use_dependencies and not args.use_pos_tags:
+    elif args.use_dependencies and not args.use_pos_tags:
         tokenizer = BertTokenizerArgs.from_pretrained(
             args.model_name_or_path,
             args,
             dep_vocab_file=dep_vocab_file,
+            do_lower_case=bool('uncased' in args.model_name_or_path),
+            cache_dir=args.cache_dir if args.cache_dir else None
+        )
+    else:
+        tokenizer = BertTokenizerArgs.from_pretrained(
+            args.model_name_or_path,
+            args,
             do_lower_case=bool('uncased' in args.model_name_or_path),
             cache_dir=args.cache_dir if args.cache_dir else None
         )
