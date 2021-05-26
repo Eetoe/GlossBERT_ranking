@@ -68,6 +68,7 @@ def _load_and_cache_dataset(args, csv_path, tokenizer, max_sequence_length, dese
         cached_features_file = cached_features_file + "-wh_w_m"
 
     # file names now start to divege:
+    # ------ With gloss extensions ------
     cached_features_file_pd_ge = cached_features_file + "-pos"
     cached_features_file_pd_ge = cached_features_file_pd_ge + "-dep"
     cached_features_file_pd_ge = cached_features_file_pd_ge + "-glosses_extended_w_tgt-no_syntax_for_special"
@@ -84,6 +85,11 @@ def _load_and_cache_dataset(args, csv_path, tokenizer, max_sequence_length, dese
     if os.path.exists(cached_features_file_d_ge) and re.search("dep", args.to_cache_with_gloss_extensions):
         raise ValueError(f"{cached_features_file_d_ge} already exists, stopping script to avoid overwriting")
 
+    cached_features_file_ge = cached_features_file + "-glosses_extended_w_tgt-no_syntax_for_special"
+    if os.path.exists(cached_features_file_d_ge) and re.search("no", args.to_cache_with_gloss_extensions):
+        raise ValueError(f"{cached_features_file_ge} already exists, stopping script to avoid overwriting")
+
+    # ------ Without gloss extensions ------
     cached_features_file_pd = cached_features_file + "-pos"
     cached_features_file_pd = cached_features_file_pd + "-dep"
     cached_features_file_pd = cached_features_file_pd + "-no_syntax_for_special"
@@ -97,14 +103,17 @@ def _load_and_cache_dataset(args, csv_path, tokenizer, max_sequence_length, dese
 
     cached_features_file_d = cached_features_file + "-dep"
     cached_features_file_d = cached_features_file_d + "-no_syntax_for_special"
-    if os.path.exists(cached_features_file) and re.search("dep", args.to_cache_wo_gloss_extensions):
+    if os.path.exists(cached_features_file_d) and re.search("dep", args.to_cache_wo_gloss_extensions):
         raise ValueError(f"{cached_features_file_d} already exists, stopping script to avoid overwriting")
+
+    if os.path.exists(cached_features_file) and re.search("no", args.to_cache_with_gloss_extensions):
+        raise ValueError(f"{cached_features_file} already exists, stopping script to avoid overwriting")
 
     # ====== Create cached data ======
     print(f"Creating features to cache from dataset {csv_path}")
     records = _create_records_from_csv(csv_path, deserialze_fn)
 
-    features_pd, features_p, features_d, features_pd_ge, features_p_ge, features_d_ge = _create_features_from_records(
+    features_pd, features_p, features_d, features, features_pd_ge, features_p_ge, features_d_ge, features_ge = _create_features_from_records(
         args, spacy_model, records, max_sequence_length, tokenizer,
         cls_token=tokenizer.cls_token,
         sep_token=tokenizer.sep_token,
@@ -124,6 +133,10 @@ def _load_and_cache_dataset(args, csv_path, tokenizer, max_sequence_length, dese
         print("Saving features into cached file %s", cached_features_file_d)
         torch.save(features_d, cached_features_file_d)
 
+    if features[-1]:
+        print("Saving features into cached file %s", cached_features_file)
+        torch.save(features, cached_features_file)
+
     if features_pd_ge[-1]:
         print("Saving features into cached file %s", cached_features_file_pd_ge)
         torch.save(features_pd_ge, cached_features_file_pd_ge)
@@ -135,6 +148,10 @@ def _load_and_cache_dataset(args, csv_path, tokenizer, max_sequence_length, dese
     if features_d_ge[-1]:
         print("Saving features into cached file %s", cached_features_file_d_ge)
         torch.save(features_d_ge, cached_features_file_d_ge)
+
+    if features_ge[-1]:
+        print("Saving features into cached file %s", cached_features_file_ge)
+        torch.save(features_ge, cached_features_file_ge)
 
 
 # Read in dataset and deserialize each row into a named tuple.
@@ -212,12 +229,14 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
     pd for both of the above
     ge for "(with) gloss extensions" 
     """
+    features = []
     features_p = []
     features_d = []
     features_pd = []
     features_p_ge = []
     features_d_ge = []
     features_pd_ge = []
+    features_ge = []
 
     for record in tqdm(records, disable=disable_progress_bar):
         # ====== Create tokens for BERT from the sentence ======
@@ -232,53 +251,58 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                 - Ensures the correct SpaCy analysis is used & eliminates the need to reinsert the [TGT] tokens
             - Create the context tokens of the context-gloss pair.
         """
-        # ====== Analyze the sentence ======
-        sentence = record.sentence
-        # For sentences like "Kids were [TGT] break [TGT]-dancing at the street corner":
-        #   - Make sure to insert a space before/after the target tokens
-        sentence = re.sub(r"(\[TGT\])([^ ])", r"\1 \2", sentence)
-        sentence = re.sub(r"([^ ])(\[TGT\])", r"\1 \2", sentence)
-
-        # Create sentence without [TGT] tokens
-        no_tgt_sent = re.sub(r"\[TGT\]", "", sentence).strip()
-        no_tgt_sent = re.sub(r"\s{2,}", " ", no_tgt_sent)
-
-        # Analyze sentence with and without [TGT] tokens
-        spacy_doc = spacy_model(no_tgt_sent)
-        spacy_tokens = [(token.text, token.pos_, token.dep_, tokenizer.tokenize(token.text)) for token in spacy_doc]
-        tgt_doc = spacy_model(sentence)
-        tgt_tokens = [(token.text, token.pos_, token.dep_, tokenizer.tokenize(token.text)) for token in tgt_doc]
-
-        # Check if the Spacy analysis is the same with and without [TGT] tokens
-        tgt_tokens2 = [ele for ele in tgt_tokens if ele[0] != "[TGT]"]
-        if tgt_tokens2 == spacy_tokens:
-            # If they're the same, simply add the predefined, correct tokens for [TGT]
-            complete_tokens = [ele if ele[0] != "[TGT]" else spacy_tgt_tpl for ele in tgt_tokens]
+        if args.to_cache_with_gloss_extensions == "no":
+            tokens_a = tokenizer.tokenize(record.sentence)
         else:
-            # Find the indexes of the [TGT] words and add the predefined [TGT] tokens add those indexes
-            tgt_index = [i for i, tokens in enumerate(tgt_tokens) if tokens[0] == "[TGT]"]
-            complete_tokens = spacy_tokens
-            complete_tokens.insert(tgt_index[0], spacy_tgt_tpl)
-            complete_tokens.insert(tgt_index[1], spacy_tgt_tpl)
+            # ====== Analyze the sentence ======
+            sentence = record.sentence
+            # For sentences like "Kids were [TGT] break [TGT]-dancing at the street corner":
+            #   - Make sure to insert a space before/after the target tokens
+            sentence = re.sub(r"(\[TGT\])([^ ])", r"\1 \2", sentence)
+            sentence = re.sub(r"([^ ])(\[TGT\])", r"\1 \2", sentence)
 
-        # ====== Create the context tokens for the context-gloss pairs for BERT ======
-        tokens_a = [token for sublist in complete_tokens for token in sublist[3]]
-        bert_pos_tokens_a = [[ele[1]] * len(ele[-1]) for ele in complete_tokens]
-        bert_pos_tokens_a = [pos if re.search(r"^\[.+\]$", pos) else "[" + pos + "]"
-                             for sublist in bert_pos_tokens_a for pos in sublist]
-        bert_dep_tokens_a = [[ele[2]] * len(ele[-1]) for ele in complete_tokens]
-        bert_dep_tokens_a = [dep if re.search(r"^\[.+\]$", dep) else "[" + dep + "]"
-                             for sublist in bert_dep_tokens_a for dep in sublist]
-        assert (len(tokens_a) == len(bert_pos_tokens_a) == len(bert_dep_tokens_a))
+            # Create sentence without [TGT] tokens
+            no_tgt_sent = re.sub(r"\[TGT\]", "", sentence).strip()
+            no_tgt_sent = re.sub(r"\s{2,}", " ", no_tgt_sent)
+
+            # Analyze sentence with and without [TGT] tokens
+            spacy_doc = spacy_model(no_tgt_sent)
+            spacy_tokens = [(token.text, token.pos_, token.dep_, tokenizer.tokenize(token.text)) for token in spacy_doc]
+            tgt_doc = spacy_model(sentence)
+            tgt_tokens = [(token.text, token.pos_, token.dep_, tokenizer.tokenize(token.text)) for token in tgt_doc]
+
+            # Check if the Spacy analysis is the same with and without [TGT] tokens
+            tgt_tokens2 = [ele for ele in tgt_tokens if ele[0] != "[TGT]"]
+            if tgt_tokens2 == spacy_tokens:
+                # If they're the same, simply add the predefined, correct tokens for [TGT]
+                complete_tokens = [ele if ele[0] != "[TGT]" else spacy_tgt_tpl for ele in tgt_tokens]
+            else:
+                # Find the indexes of the [TGT] words and add the predefined [TGT] tokens add those indexes
+                tgt_index = [i for i, tokens in enumerate(tgt_tokens) if tokens[0] == "[TGT]"]
+                complete_tokens = spacy_tokens
+                complete_tokens.insert(tgt_index[0], spacy_tgt_tpl)
+                complete_tokens.insert(tgt_index[1], spacy_tgt_tpl)
+
+            # ====== Create the context tokens for the context-gloss pairs for BERT ======
+            tokens_a = [token for sublist in complete_tokens for token in sublist[3]]
+            bert_pos_tokens_a = [[ele[1]] * len(ele[-1]) for ele in complete_tokens]
+            bert_pos_tokens_a = [pos if re.search(r"^\[.+\]$", pos) else "[" + pos + "]"
+                                 for sublist in bert_pos_tokens_a for pos in sublist]
+            bert_dep_tokens_a = [[ele[2]] * len(ele[-1]) for ele in complete_tokens]
+            bert_dep_tokens_a = [dep if re.search(r"^\[.+\]$", dep) else "[" + dep + "]"
+                                 for sublist in bert_dep_tokens_a for dep in sublist]
+            assert (len(tokens_a) == len(bert_pos_tokens_a) == len(bert_dep_tokens_a))
 
         # ====== Create tokens for BERT from the gloss ======
         # Make empty lists for context-gloss pairs
+        pairs = []
         pairs_p = []
         pairs_d = []
         pairs_pd = []
         pairs_p_ge = []
         pairs_d_ge = []
         pairs_pd_ge = []
+        pairs_ge = []
 
         # Sequences to loop through
         sequences = [(gloss, 1 if i in record.targets else 0, record.sense_keys[i])
@@ -287,52 +311,65 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
         # Get the gloss from the record; 1 if i is in the record targets or 0 if i is not in the record targets.
         # Loop through sequences
         for seq, label, key in sequences:  # seq is the gloss, label is either 0 or 1
-            # ====== Analyze sentence using spacy ======
-            spacy_doc = spacy_model(seq)
-            spacy_tokens_complete = [(token.text, token.pos_, token.dep_, tokenizer.tokenize(token.text))
-                                     for token in spacy_doc]
+            if args.to_cache_with_gloss_extensions == "no" and args.to_cache_wo_gloss_extensions == "no":
+                tokens_b = tokenizer.tokenize(seq)
+            elif args.to_cache_with_gloss_extensions == "no" and args.to_cache_wo_gloss_extensions == "":
+                tokens_b = tokenizer.tokenize(seq)
+            elif args.to_cache_with_gloss_extensions == "" and args.to_cache_wo_gloss_extensions == "no":
+                tokens_b = tokenizer.tokenize(seq)
+            else:
+                # ====== Analyze sentence using spacy ======
+                spacy_doc = spacy_model(seq)
+                spacy_tokens_complete = [(token.text, token.pos_, token.dep_, tokenizer.tokenize(token.text))
+                                         for token in spacy_doc]
 
-            # ====== Create the gloss tokens to feed to BERT ======
-            tokens_b = [word for sublist in spacy_tokens_complete for word in sublist[3]]
-            bert_pos_tokens_b = [[ele[1]] * len(ele[3]) for ele in spacy_tokens_complete]
-            bert_pos_tokens_b = [pos if re.search(r"^\[.+\]$", pos) else "[" + pos + "]"
-                                 for sublist in bert_pos_tokens_b for pos in sublist]
-            assert (len(tokens_b) == len(bert_pos_tokens_b))
-            # if args.use_dependencies:
-            bert_dep_tokens_b = [[ele[2]] * len(ele[3]) for ele in spacy_tokens_complete]
-            bert_dep_tokens_b = [dep if re.search(r"^\[.+\]$", dep) else "[" + dep + "]"
-                                 for sublist in bert_dep_tokens_b for dep in sublist]
-            assert (len(tokens_b) == len(bert_dep_tokens_b))
+                # ====== Create the gloss tokens to feed to BERT ======
+                tokens_b = [word for sublist in spacy_tokens_complete for word in sublist[3]]
+                bert_pos_tokens_b = [[ele[1]] * len(ele[3]) for ele in spacy_tokens_complete]
+                bert_pos_tokens_b = [pos if re.search(r"^\[.+\]$", pos) else "[" + pos + "]"
+                                     for sublist in bert_pos_tokens_b for pos in sublist]
+                assert (len(tokens_b) == len(bert_pos_tokens_b))
+                # if args.use_dependencies:
+                bert_dep_tokens_b = [[ele[2]] * len(ele[3]) for ele in spacy_tokens_complete]
+                bert_dep_tokens_b = [dep if re.search(r"^\[.+\]$", dep) else "[" + dep + "]"
+                                     for sublist in bert_dep_tokens_b for dep in sublist]
+                assert (len(tokens_b) == len(bert_dep_tokens_b))
 
             # ====== From here on, the code is split into with/without gloss extensions ======
             # ====== Without gloss extensions ======
             if args.to_cache_wo_gloss_extensions != "":
                 # ====== Truncate tokens ======
                 _truncate_seq_pair(tokens_a, tokens_b, max_seq_length - 3)
-                _truncate_seq_pair(bert_pos_tokens_a, bert_pos_tokens_b, max_seq_length - 3)
-                _truncate_seq_pair(bert_dep_tokens_a, bert_dep_tokens_b, max_seq_length - 3)
+
+                if args.to_cache_wo_gloss_extensions != "no":
+                    _truncate_seq_pair(bert_pos_tokens_a, bert_pos_tokens_b, max_seq_length - 3)
+                    _truncate_seq_pair(bert_dep_tokens_a, bert_dep_tokens_b, max_seq_length - 3)
 
                 # ====== Merge the context and gloss tokens to form the context gloss pair ======
                 tokens = tokens_a + [sep_token]
                 segment_ids = [sequence_a_segment_id] * len(tokens)
-                pos_tokens = bert_pos_tokens_a + ["[PAD]"]
-                dep_tokens = bert_dep_tokens_a + ["[PAD]"]
+                if args.to_cache_wo_gloss_extensions != "no":
+                    pos_tokens = bert_pos_tokens_a + ["[PAD]"]
+                    dep_tokens = bert_dep_tokens_a + ["[PAD]"]
 
                 tokens += tokens_b + [sep_token]
                 # +1 to account for [SEP] token
                 segment_ids += [sequence_b_segment_id] * (len(tokens_b) + 1)
-                pos_tokens += bert_pos_tokens_b + ["[PAD]"]
-                dep_tokens += bert_dep_tokens_b + ["[PAD]"]
+                if args.to_cache_wo_gloss_extensions != "no":
+                    pos_tokens += bert_pos_tokens_b + ["[PAD]"]
+                    dep_tokens += bert_dep_tokens_b + ["[PAD]"]
 
                 # ====== Add [CLS] and [PAD] tokens ======
                 tokens = [cls_token] + tokens
                 segment_ids = [cls_token_segment_id] + segment_ids
-                pos_tokens = ["[PAD]"] + pos_tokens
-                dep_tokens = ["[PAD]"] + dep_tokens
+                if args.to_cache_wo_gloss_extensions != "no":
+                    pos_tokens = ["[PAD]"] + pos_tokens
+                    dep_tokens = ["[PAD]"] + dep_tokens
 
                 input_ids = tokenizer.convert_tokens_to_ids(tokens)
-                pos_ids = tokenizer.convert_syntax_tokens_to_ids(pos_tokens, "pos")
-                dep_ids = tokenizer.convert_syntax_tokens_to_ids(dep_tokens, "dep")
+                if args.to_cache_wo_gloss_extensions != "no":
+                    pos_ids = tokenizer.convert_syntax_tokens_to_ids(pos_tokens, "pos")
+                    dep_ids = tokenizer.convert_syntax_tokens_to_ids(dep_tokens, "dep")
 
                 # The mask has 1 for real tokens and 0 for padding tokens. Only real
                 # tokens are attended to.
@@ -344,14 +381,16 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                 input_ids = input_ids + ([pad_token] * padding_length)  # [pad_token] is 0, the [PAD] token's id
                 input_mask = input_mask + ([0] * padding_length)
                 segment_ids = segment_ids + ([pad_token_segment_id] * padding_length)
-                pos_ids = pos_ids + ([pad_token] * padding_length)
-                dep_ids = dep_ids + ([pad_token] * padding_length)
+                if args.to_cache_wo_gloss_extensions != "no":
+                    pos_ids = pos_ids + ([pad_token] * padding_length)
+                    dep_ids = dep_ids + ([pad_token] * padding_length)
 
                 assert len(input_ids) == max_seq_length
                 assert len(input_mask) == max_seq_length
                 assert len(segment_ids) == max_seq_length
-                assert len(pos_ids) == max_seq_length
-                assert len(dep_ids) == max_seq_length
+                if args.to_cache_wo_gloss_extensions != "no":
+                    assert len(pos_ids) == max_seq_length
+                    assert len(dep_ids) == max_seq_length
 
                 # ====== Append pairs tokens to pairs ======
                 if re.search("pd", args.to_cache_wo_gloss_extensions):
@@ -370,62 +409,76 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                         BertInputDep(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids,
                                      dep_ids=dep_ids, label_id=label)
                     )
+                if re.search("no", args.to_cache_wo_gloss_extensions):
+                    pairs.append(
+                        BertInput(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids, label_id=label)
+                    )
 
             # ====== With gloss extensions ======
             if args.to_cache_with_gloss_extensions != "":
                 # Make token lists for gloss extensions
                 tokens_a_ge = tokens_a
-                bert_pos_tokens_a_ge = bert_pos_tokens_a
-                bert_dep_tokens_a_ge = bert_dep_tokens_a
+                if args.to_cache_with_gloss_extensions != "no":
+                    bert_pos_tokens_a_ge = bert_pos_tokens_a
+                    bert_dep_tokens_a_ge = bert_dep_tokens_a
                 tokens_b_ge = tokens_b
-                bert_pos_tokens_b_ge = bert_pos_tokens_b
-                bert_dep_tokens_b_ge = bert_dep_tokens_b
+                if args.to_cache_with_gloss_extensions != "no":
+                    bert_pos_tokens_b_ge = bert_pos_tokens_b
+                    bert_dep_tokens_b_ge = bert_dep_tokens_b
 
                 # ====== Create gloss extension and then truncate =======
                 gloss_extension_tuple = _get_gloss_extension(key, conv_dict)
                 gloss_ex_tokens = tokenizer.tokenize(gloss_extension_tuple[0])
                 num_gloss_ex = len(gloss_ex_tokens)
-                gloss_ex_pos_tokens = [gloss_extension_tuple[1]] * num_gloss_ex
-                gloss_ex_dep_tokens = [gloss_extension_tuple[2]] * num_gloss_ex
+                if args.to_cache_with_gloss_extensions != "no":
+                    gloss_ex_pos_tokens = [gloss_extension_tuple[1]] * num_gloss_ex
+                    gloss_ex_dep_tokens = [gloss_extension_tuple[2]] * num_gloss_ex
                 # add target tokens to gloss extension tokens, then add appropriate syntax tokens.
                 gloss_ex_tokens.insert(0, "[TGT]")
                 gloss_ex_tokens.append("[TGT]")
-                gloss_ex_pos_tokens.insert(0, spacy_tgt_tpl[1])
-                gloss_ex_pos_tokens.append(spacy_tgt_tpl[1])
-                gloss_ex_dep_tokens.insert(0, spacy_tgt_tpl[2])
-                gloss_ex_dep_tokens.append(spacy_tgt_tpl[2])
+                if args.to_cache_with_gloss_extensions != "no":
+                    gloss_ex_pos_tokens.insert(0, spacy_tgt_tpl[1])
+                    gloss_ex_pos_tokens.append(spacy_tgt_tpl[1])
+                    gloss_ex_dep_tokens.insert(0, spacy_tgt_tpl[2])
+                    gloss_ex_dep_tokens.append(spacy_tgt_tpl[2])
                 num_gloss_ex = len(gloss_ex_tokens)
 
                 max_seq_len_with_gloss_ex = max_seq_length - num_gloss_ex - 3
 
                 _truncate_seq_pair(tokens_a_ge, tokens_b_ge, max_seq_len_with_gloss_ex)
-                _truncate_seq_pair(bert_pos_tokens_a_ge, bert_pos_tokens_b_ge, max_seq_len_with_gloss_ex)
-                _truncate_seq_pair(bert_dep_tokens_a_ge, bert_dep_tokens_b_ge, max_seq_len_with_gloss_ex)
+                if args.to_cache_with_gloss_extensions != "no":
+                    _truncate_seq_pair(bert_pos_tokens_a_ge, bert_pos_tokens_b_ge, max_seq_len_with_gloss_ex)
+                    _truncate_seq_pair(bert_dep_tokens_a_ge, bert_dep_tokens_b_ge, max_seq_len_with_gloss_ex)
 
                 # ====== Merge the context and gloss tokens to form the context gloss pair ======
                 tokens_ge = tokens_a_ge + [sep_token]
                 segment_ids_ge = [sequence_a_segment_id] * len(tokens_ge)
-                pos_tokens_ge = bert_pos_tokens_a + ["[PAD]"]
-                dep_tokens_ge = bert_dep_tokens_a + ["[PAD]"]
+                if args.to_cache_with_gloss_extensions != "no":
+                    pos_tokens_ge = bert_pos_tokens_a + ["[PAD]"]
+                    dep_tokens_ge = bert_dep_tokens_a + ["[PAD]"]
 
                 tokens_ge += gloss_ex_tokens
-                pos_tokens_ge += gloss_ex_pos_tokens
-                dep_tokens_ge += gloss_ex_dep_tokens
+                if args.to_cache_with_gloss_extensions != "no":
+                    pos_tokens_ge += gloss_ex_pos_tokens
+                    dep_tokens_ge += gloss_ex_dep_tokens
 
                 tokens_ge += tokens_b_ge + [sep_token]
                 # +1 to account for [SEP] token
                 segment_ids_ge += [sequence_b_segment_id] * (len(tokens_b_ge) + 1 + num_gloss_ex)
-                pos_tokens_ge += bert_pos_tokens_b_ge + ["[PAD]"]
-                dep_tokens_ge += bert_dep_tokens_b_ge + ["[PAD]"]
+                if args.to_cache_with_gloss_extensions != "no":
+                    pos_tokens_ge += bert_pos_tokens_b_ge + ["[PAD]"]
+                    dep_tokens_ge += bert_dep_tokens_b_ge + ["[PAD]"]
 
                 tokens_ge = [cls_token] + tokens_ge
                 segment_ids_ge = [cls_token_segment_id] + segment_ids_ge
-                pos_tokens_ge = ["[PAD]"] + pos_tokens_ge
-                dep_tokens_ge = ["[PAD]"] + dep_tokens_ge
+                if args.to_cache_with_gloss_extensions != "no":
+                    pos_tokens_ge = ["[PAD]"] + pos_tokens_ge
+                    dep_tokens_ge = ["[PAD]"] + dep_tokens_ge
 
                 input_ids_ge = tokenizer.convert_tokens_to_ids(tokens_ge)
-                pos_ids_ge = tokenizer.convert_syntax_tokens_to_ids(pos_tokens_ge, "pos")
-                dep_ids_ge = tokenizer.convert_syntax_tokens_to_ids(dep_tokens_ge, "dep")
+                if args.to_cache_with_gloss_extensions != "no":
+                    pos_ids_ge = tokenizer.convert_syntax_tokens_to_ids(pos_tokens_ge, "pos")
+                    dep_ids_ge = tokenizer.convert_syntax_tokens_to_ids(dep_tokens_ge, "dep")
 
                 # The mask has 1 for real tokens and 0 for padding tokens. Only real
                 # tokens are attended to.
@@ -438,14 +491,16 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                         [pad_token] * padding_length_ge)  # [pad_token] is 0, the [PAD] token's id
                 input_mask_ge = input_mask_ge + ([0] * padding_length_ge)
                 segment_ids_ge = segment_ids_ge + ([pad_token_segment_id] * padding_length_ge)
-                pos_ids_ge = pos_ids_ge + ([pad_token] * padding_length_ge)
-                dep_ids_ge = dep_ids_ge + ([pad_token] * padding_length_ge)
+                if args.to_cache_with_gloss_extensions != "no":
+                    pos_ids_ge = pos_ids_ge + ([pad_token] * padding_length_ge)
+                    dep_ids_ge = dep_ids_ge + ([pad_token] * padding_length_ge)
 
                 assert len(input_ids_ge) == max_seq_length
                 assert len(input_mask_ge) == max_seq_length
                 assert len(segment_ids_ge) == max_seq_length
-                assert len(pos_ids_ge) == max_seq_length
-                assert len(dep_ids_ge) == max_seq_length
+                if args.to_cache_with_gloss_extensions != "no":
+                    assert len(pos_ids_ge) == max_seq_length
+                    assert len(dep_ids_ge) == max_seq_length
 
                 # ====== Append pairs tokens to pairs ======
                 if re.search("pd", args.to_cache_with_gloss_extensions):
@@ -464,40 +519,47 @@ def _create_features_from_records(args, spacy_model, records, max_seq_length, to
                         BertInputDep(input_ids=input_ids_ge, input_mask=input_mask_ge, segment_ids=segment_ids_ge,
                                      dep_ids=dep_ids_ge, label_id=label)
                     )
-
+                if re.search("no", args.to_cache_with_gloss_extensions):
+                    pairs_ge.append(
+                        BertInput(input_ids=input_ids_ge, input_mask=input_mask_ge, segment_ids=segment_ids_ge, label_id=label)
+                    )
         features_pd.append(pairs_pd)
         features_p.append(pairs_p)
         features_d.append(pairs_d)
+        features.append(pairs)
         features_pd_ge.append(pairs_pd_ge)
         features_p_ge.append(pairs_p_ge)
         features_d_ge.append(pairs_d_ge)
+        features_ge.append(pairs_ge)
 
     # ====== Print info on the cached data ======
     # Length of pairs
     print("\nNumber of records for the cached data:")
     if args.to_cache_with_gloss_extensions != "":
-        w_ge = [len(ft) for ft in [features_pd_ge, features_p_ge, features_d_ge] if ft != []]
+        w_ge = [len(ft) for ft in [features_pd_ge, features_p_ge, features_d_ge, features_ge] if ft != []]
         print("Number of context gloss pairs:", w_ge[0], "\n")
     else:
-        wo_ge = [len(ft) for ft in [features_pd, features_p, features_d] if ft != []]
+        wo_ge = [len(ft) for ft in [features_pd, features_p, features_d, features] if ft != []]
         print("Number of context gloss pairs:", wo_ge[0], "\n")
 
     # Example of cached data
     print("Example of the input for BERT:")
-    w_ge = [ft[-1][0] for ft in [features_pd_ge, features_p_ge, features_d_ge] if len(ft[-1]) > 0]
+    w_ge = [ft[-1][0] for ft in [features_pd_ge, features_p_ge, features_d_ge, features_ge] if len(ft[-1]) > 0]
     if len(w_ge) > 0:
         print(w_ge[0], "\n")
         print(tokens_ge, "\n")
-        print(pos_tokens_ge, "\n")
-        print(dep_tokens_ge, "\n")
+        if args.to_cache_with_gloss_extensions != "no":
+            print(pos_tokens_ge, "\n")
+            print(dep_tokens_ge, "\n")
     else:
-        wo_ge = [ft[-1][0] for ft in [features_pd, features_p, features_d] if len(ft[-1]) > 0]
+        wo_ge = [ft[-1][0] for ft in [features_pd, features_p, features_d, features] if len(ft[-1]) > 0]
         print("\n", wo_ge, "\n")
         print(tokens, "\n")
-        print(pos_tokens, "\n")
-        print(dep_tokens, "\n")
+        if args.to_cache_wo_gloss_extensions != "no":
+            print(pos_tokens, "\n")
+            print(dep_tokens, "\n")
 
-    return features_pd, features_p, features_d, features_pd_ge, features_p_ge, features_d_ge
+    return features_pd, features_p, features_d, features, features_pd_ge, features_p_ge, features_d_ge, features_ge
 
 
 def load_cached_dataset(path):
