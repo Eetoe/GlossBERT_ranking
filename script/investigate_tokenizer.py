@@ -64,7 +64,7 @@ if __name__ == '__main__':
 
     print("\n\n", gloss_extension,"\n\n")
 
-    sentence = "Kids were-[TGT]-break-[TGT]-dancing at the loveliest street corner"
+    sentence = "the sound made by a dog"
     # For sentences like "Kids were [TGT] break [TGT]-dancing at the street corner":
     # Make sure to insert a space after the target tokens
     sentence = re.sub(r"(\[TGT\])([^ ])", r"\1 \2", sentence)

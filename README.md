@@ -102,15 +102,98 @@ python script/prepare_dataset.py \
     --max_num_gloss 6 \
     --use_augmentation
 ```
+```
+python3 script/prepare_dataset_syntax.py \
+    --corpus_dir "data/corpus/SemCor" \
+    --output_dir "data/train" \
+    --max_num_gloss 6 \
+    --cross_pos_train
+```
 
 Example with syntax augmentation:
 ```
 python3 script/prepare_dataset_syntax.py \
     --corpus_dir "data/corpus/SemCor" \
     --output_dir "data/train" \
+    --max_num_gloss 6 \
+    --use_augmentation \
     --cross_pos_train
 ```
+###Caching data
+Caches dataset in a format the model can read. Can create multiple cached datasets at once.
+```
+python3 script/cache_data_syntax.py --train_path --model_name_or_path "bert-base-uncased"
+        --to_cache_with_gloss_extensions --to_cache_wo_gloss_extensions
 
+arguments:
+    --train_path: the path to the data to be cached
+    --model_name_or_path: name of the BERT model to cache data for. Model path not implemented yet.
+    --to_cache_with_gloss_extensions: cached datasets using gloss extensions. Takes a string for input, where units are separated by "_".
+                                      pos for a model with pos embeddings, dep for dependency embeddings and pd for a dataset using both.
+                                      Not implemented for models without syntax embeddings.
+                                      Empty string ("") means that no dataset with gloss extensions is made.
+    --to_cache_wo_gloss_extensions cached datasets without gloss extensions. Input is the same format as for with gloss extensions.
+```
+
+Examples
+```
+python3 script/cache_data_syntax.py \
+    --train_path "data/dev/wo_gloss_extensions/semeval2007.csv" \
+    --model_name_or_path "bert-large-uncased-whole-word-masking" \
+    --to_cache_with_gloss_extensions "" \
+    --to_cache_wo_gloss_extensions "pos"
+```
+```
+python3 script/cache_data_syntax.py \
+    --train_path "data/small_data_for_trying_things/small_train.csv" \
+    --model_name_or_path "bert-base-uncased" \
+    --to_cache_with_gloss_extensions "pd" \
+    --to_cache_wo_gloss_extensions ""
+```
+```
+python3 script/cache_data_syntax.py \
+    --train_path "data/train/semcor-max_num_gloss=6-cross_pos.csv" \
+    --model_name_or_path "bert-base-uncased" \
+    --to_cache_with_gloss_extensions "" \
+    --to_cache_wo_gloss_extensions "pos"
+```
+```
+python3 script/cache_data_syntax.py \
+    --train_path "data/train/semcor-max_num_gloss=6-augmented.csv" \
+    --model_name_or_path "bert-large-uncased-whole-word-masking" \
+    --to_cache_with_gloss_extensions "" \
+    --to_cache_wo_gloss_extensions "pos"
+```
+```
+python3 script/cache_data_syntax.py \
+    --train_path "data/dev/semeval2007.csv" \
+    --model_name_or_path "bert-large-uncased-whole-word-masking" \
+    --to_cache_with_gloss_extensions "pos_dep_pd" \
+    --to_cache_wo_gloss_extensions "pos_dep_pd"
+```
+```
+python3 script/cache_data_syntax.py \
+    --train_path "data/dev/semeval2007.csv" \
+    --model_name_or_path "bert-base-uncased" \
+    --to_cache_with_gloss_extensions "pos_dep_pd" \
+    --to_cache_wo_gloss_extensions "pos_dep_pd"
+```
+```
+python3 script/cache_data_syntax.py \
+    --train_path "data/test/senseval3.csv" \
+    --model_name_or_path "bert-large-uncased-whole-word-masking" \
+    --to_cache_with_gloss_extensions "pos_dep_pd" \
+    --to_cache_wo_gloss_extensions "pos_dep_pd"
+```
+
+
+```
+python3 script/cache_data_syntax.py \
+    --train_path "data/test/senseval3.csv" \
+    --model_name_or_path "bert-large-uncased-whole-word-masking" \
+    --to_cache_with_gloss_extensions "pos_dep_pd" \
+    --to_cache_wo_gloss_extensions "pos_dep_pd"
+```
 
 ### Development/Test dataset
 Usage:
@@ -198,7 +281,24 @@ python script/run_model.py \
     --logging_steps 1000 \
     --save_steps 1000
 ```
-
+Example:
+```
+python3 script/run_model_syntax.py \
+    --do_train \
+    --train_path "data/train/semcor-cross_pos.csv" \
+    --model_name_or_path "bert-large-uncased" \
+    --output_dir "auto_create" \
+    --per_gpu_train_batch_size 128 \
+    --gradient_accumulation_steps 16 \
+    --learning_rate 2e-5 \
+    --num_train_epochs 4 \
+    --logging_steps 1000 \
+    --save_steps 1000 \
+    --use_dependencies \
+    --use_pos_tags \
+    --use_gloss_extensions \
+    --gloss_extensions_w_tgt
+```
 THE EXAMPLES TO USE
 ```
 python3 script/run_model_syntax.py \
@@ -215,6 +315,67 @@ python3 script/run_model_syntax.py \
     --use_dependencies \
     --use_pos_tags
 ```
+#For loading from checkpoint
+```
+python3 script/run_model_syntax.py \
+    --do_train \
+    --train_path "data/train/small_train.csv" \
+    --model_name_or_path "model/bert-base-uncased-pos-dep-no_syntax_for_special-glosses_extended_w_tgt-batch_size=8-lr=2e-05/checkpoint-21" \
+    --output_dir "model/bert-base-uncased-pos-dep-no_syntax_for_special-glosses_extended_w_tgt-batch_size=8-lr=2e-05" \
+    --per_gpu_train_batch_size 8 \
+    --gradient_accumulation_steps 1 \
+    --learning_rate 2e-5 \
+    --num_train_epochs 2 \
+    --logging_steps 7 \
+    --save_steps 3 \
+    --use_dependencies \
+    --use_pos_tags \
+    --use_gloss_extensions \
+    --gloss_extensions_w_tgt \
+    --zero_syntax_for_special_tokens \
+    --overwrite_output_dir
+```
+```
+python3 script/run_model_syntax.py \
+    --do_train \
+    --train_path "data/train/small_train.csv" \
+    --model_name_or_path "bert-base-uncased" \
+    --output_dir "auto_create" \
+    --per_gpu_train_batch_size 8 \
+    --gradient_accumulation_steps 1 \
+    --learning_rate 2e-5 \
+    --num_train_epochs 2 \
+    --logging_steps 7 \
+    --save_steps 7 \
+    --use_dependencies \
+    --use_pos_tags \
+    --use_gloss_extensions \
+    --gloss_extensions_w_tgt \
+    --zero_syntax_for_special_tokens
+```
+
+
+
+
+```
+python3 script/run_model_syntax.py \
+    --do_train \
+    --train_path "data/dev/semeval2007.csv" \
+    --model_name_or_path "bert-base-uncased" \
+    --output_dir "auto_create" \
+    --per_gpu_train_batch_size 8 \
+    --gradient_accumulation_steps 1 \
+    --learning_rate 2e-5 \
+    --num_train_epochs 2 \
+    --logging_steps 7 \
+    --save_steps 7 \
+    --use_dependencies \
+    --use_pos_tags \
+    --use_gloss_extensions \
+    --gloss_extensions_w_tgt \
+    --zero_syntax_for_special_tokens
+```
+
 ```
 python3 script/run_model_syntax.py \
     --do_train \
@@ -232,23 +393,7 @@ python3 script/run_model_syntax.py \
     --use_gloss_extensions \
     --gloss_extensions_w_tgt
 ```
-```
-python3 script/run_model_syntax.py \
-    --do_train \
-    --train_path "data/train/small_train.csv" \
-    --model_name_or_path "bert-large-uncased" \
-    --output_dir "auto_create" \
-    --per_gpu_train_batch_size 8 \
-    --gradient_accumulation_steps 1 \
-    --learning_rate 2e-5 \
-    --num_train_epochs 2 \
-    --logging_steps 7 \
-    --save_steps 7 \
-    --use_dependencies \
-    --use_pos_tags \
-    --use_gloss_extensions \
-    --gloss_extensions_w_tgt
-```
+
 
 
 ## Evaluation
@@ -274,9 +419,9 @@ Example:
 ```
 python3 script/run_model.py \
     --do_eval \
-    --eval_path "data/dev/semeval2007.csv" \
-    --model_name_or_path "model/yap_et_al_model" \
-    --output_dir "model/yap_et_al_model"
+    --eval_path "data/test/all.csv" \
+    --model_name_or_path "model/bert-large-uncased-whole-word-masking-pos-dep-no_syntax_for_special-glosses_extended_w_tgt-batch_size=1-lr=2e-05" \
+    --output_dir "model/bert-large-uncased-whole-word-masking-pos-dep-no_syntax_for_special-glosses_extended_w_tgt-batch_size=1-lr=2e-05"
 ```
 
 EXAMPLES TO USE
@@ -291,9 +436,24 @@ python3 script/run_model_syntax.py \
 ```
 python3 script/run_model_syntax.py \
     --do_eval \
-    --eval_path "data/dev/semeval2007.csv" \
-    --model_name_or_path "model/bert-base-uncased-pos-dep-glosses_extended_w_tgt-batch_size=8-lr=2e-05" \
-    --output_dir "model/bert-base-uncased-pos-dep-glosses_extended_w_tgt-batch_size=8-lr=2e-05"
+    --eval_path "data/test/wo_gloss_extensions/all/all.csv" \
+    --model_name_or_path "model/only_pos_max_gloss_6_augmented/bert-large-uncased-whole-word-masking-pos-no_syntax_for_special-augmented-max_num_gloss=6-batch_size=1-lr=2e-05" \
+    --output_dir "model/only_pos_max_gloss_6_augmented/bert-large-uncased-whole-word-masking-pos-no_syntax_for_special-augmented-max_num_gloss=6-batch_size=1-lr=2e-05"
+```
+```
+python3 script/run_model_syntax.py \
+    --do_eval \
+    --eval_path "data/test/wo_gloss_extensions/semeval2015/semeval2015.csv" \
+    --model_name_or_path "model/only_pos_max_gloss_6/bert-large-uncased-whole-word-masking-pos-no_syntax_for_special-max_num_gloss=6-batch_size=1-lr=2e-05" \
+    --output_dir "model/only_pos_max_gloss_6/bert-large-uncased-whole-word-masking-pos-no_syntax_for_special-max_num_gloss=6-batch_size=1-lr=2e-05"
+```
+
+```
+python3 script/run_model_syntax.py \
+    --do_eval \
+    --eval_path "data/dev/wo_gloss_extensions/semeval2007.csv" \
+    --model_name_or_path "model/only_pos_max_gloss_6_augmented/bert-large-uncased-whole-word-masking-pos-no_syntax_for_special-augmented-max_num_gloss=6-batch_size=1-lr=2e-05" \
+    --output_dir "model/only_pos_max_gloss_6_augmented/bert-large-uncased-whole-word-masking-pos-no_syntax_for_special-augmented-max_num_gloss=6-batch_size=1-lr=2e-05"
 ```
 
 ### Scoring
@@ -308,13 +468,18 @@ arguments:
 Example:
 ```
 java Scorer data/corpus/semeval2007/semeval2007.gold.key.txt \
-    model/bert-base-uncased-pos-dep-batch_size=8-lr=2e-05/semeval2007_predictions.txt
+    model/Vanilla_model/semeval2007_predictions.txt
 ```
+```
+java Scorer data/corpus/senseval3/senseval3.gold.key.txt \
+    model/Vanilla_model/senseval3_predictions.txt
+```
+
 
 PYTHON EXAMPLE
 ```
-python3 scorer.py --gold_keys=data/corpus/semeval2007/semeval2007.gold.key.txt \
-    --predictions=model/bert-base-uncased-pos-dep-batch_size=8-lr=2e-05/semeval2007_predictions.txt
+python3 scorer.py --gold_keys=data/corpus/semeval2013/semeval2013.gold.key.txt \
+    --predictions=model/bert-base-uncased-pos-dep-batch_size=8-lr=2e-05/semeval2013_predictions.txt
 ```
 
 ## References
